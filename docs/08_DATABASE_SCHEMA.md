@@ -2,7 +2,7 @@
 
 **Document Version:** ULTIMATE V1.1  
 **Phase:** PHASE 02 — TECHNICAL ARCHITECTURE & SYSTEM DESIGN  
-**Selected Architecture (`FQ-01` & `A5`):** Option A — Hybrid / Repository-Abstracted Relational Schema (72 Logical Tables across 10 Bounded Domains)
+**Selected Architecture (`FQ-01` & `A5`):** Option A — Hybrid / Repository-Abstracted Relational Schema (80 Numbered Schema Groups / 86 Physical Tables across 10 Bounded Domains, Exceeding 72-Table Baseline)
 
 ---
 
@@ -18,7 +18,7 @@ Every table in the 0 TO 8848 relational schema enforces:
 
 ---
 
-## 2. Complete 72-Entity Relational Schema Specification
+## 2. Complete Relational Schema Specification (80 Numbered Schema Groups / 86 Physical Tables, Exceeding 72-Table Baseline)
 
 ### Domain 1: Identity, RBAC & Privacy Governance (9 Tables)
 1. `users`:
@@ -177,7 +177,7 @@ Every table in the 0 TO 8848 relational schema enforces:
 68. `financial_reconciliations`:
     - `reconciliationId` (PK), `periodKey`, `debitTotalUsd`, `creditTotalUsd`, `isBalanced` (bool), `auditedByUserId` (FK), `createdAt`.
 
-### Domain 10: Governance, Whistleblower, Audit, Federation & System Operations (12 Tables — Total 80 Normalized Tables, Exceeding 72 Baseline)
+### Domain 10: Governance, Whistleblower, Audit, Federation & System Operations (12 Numbered Schema Groups / 18 Physical Tables — Total 80 Numbered Schema Groups / 86 Physical Tables, Exceeding 72-Table Baseline)
 69. `governance_proposals` (System #14):
     - `proposalId` (PK), `actionType`, `proposedByUserId` (FK), `coSignedByUserIdsJson`, `quorumMet` (bool), `timelockExpiresAt` (+72h), `executedAt`, `status`.
 70. `continuity_policies` (System #14):

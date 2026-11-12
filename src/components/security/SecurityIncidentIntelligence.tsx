@@ -24,6 +24,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { computeSha256Hex } from '../../services/securityAndVerificationCore.ts';
 import { GovernanceDepartmentId } from '../../types/constitution.ts';
 import { ForensicAnomalyFlag } from '../../types/verification.ts';
 
@@ -294,19 +295,7 @@ const SIMULATED_TRIGGER_TEMPLATES: ReadonlyArray<{
 ];
 
 function computeDeterministicHexHash(seedInput: string, seqNumber: number): string {
-  let h1 = 0xdeadbeef ^ seedInput.length;
-  let h2 = 0x41c6ce57 ^ seqNumber;
-  for (let i = 0; i < seedInput.length; i++) {
-    const ch = seedInput.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const partA = (h1 >>> 0).toString(16).padStart(8, '0');
-  const partB = (h2 >>> 0).toString(16).padStart(8, '0');
-  const seqHex = seqNumber.toString(16).padStart(4, '0');
-  return `${partA}${partB}${partA}${partB}${partA}${partB}${partA}${seqHex}`.slice(0, 64);
+  return computeSha256Hex(`${seedInput}:SEQ:${seqNumber}`);
 }
 
 /**

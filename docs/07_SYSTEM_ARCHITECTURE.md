@@ -32,7 +32,7 @@
                                                  v
 +---------------------------------------------------------------------------------------------------+
 |                   SECURITY & CONSTITUTIONAL GATEWAY MIDDLEWARE (Express / Node)                   |
-|  [1] Rate Limiter & Security Headers  [2] JWT & Session Validator  [3] 20-Role RBAC + MFA Guard   |
+|  [1] Rate Limiter & Security Headers  [2] JWT & Session Validator  [3] 21-Role RBAC + MFA Guard   |
 |  [4] Conflict-of-Interest (COI) Guard [5] Business Firewall Filter [6] Payment/Blockchain Locks   |
 +---------------------------------------------------------------------------------------------------+
          |                                       |                                       |

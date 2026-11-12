@@ -17,6 +17,7 @@ import { AccessibleRouteProfile } from './components/geospatial/AccessibleRouteP
 import { SecurityIncidentIntelligence } from './components/security/SecurityIncidentIntelligence.tsx';
 import {
   ADVENTURE_CATEGORIES_24,
+  ALL_100_FEATURED_DESTINATIONS,
   FEATURED_DESTINATIONS_SHOWCASE,
   GENERATED_BRAND_IMAGES,
   MACRO_DOMAINS_SUMMARY,
@@ -399,25 +400,56 @@ export default function App() {
             </p>
           </div>
 
-          {/* Interactive Destination Selector Tabs */}
-          <div className="flex flex-wrap items-center gap-2 bg-[#121212] p-2 rounded-xl border border-neutral-800">
-            {FEATURED_DESTINATIONS_SHOWCASE.map((dest) => {
-              const isSelected = selectedDestination.destinationId === dest.destinationId;
-              return (
-                <button
-                  key={dest.destinationId}
-                  type="button"
-                  onClick={() => setSelectedDestination(dest)}
-                  className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                    isSelected
-                      ? 'bg-[#C9A86A] text-[#0A0A0A] font-semibold'
-                      : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
-                  }`}
-                >
-                  {dest.destinationId} · {dest.nameEn} ({dest.elevationMeters}m)
-                </button>
-              );
-            })}
+          {/* Interactive Destination Selector Tabs + Complete 100-Destination Registry Selector */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#121212] p-3 rounded-xl border border-neutral-800">
+            <div className="flex flex-wrap items-center gap-2">
+              {FEATURED_DESTINATIONS_SHOWCASE.map((dest) => {
+                const isSelected = selectedDestination.destinationId === dest.destinationId;
+                return (
+                  <button
+                    key={dest.destinationId}
+                    type="button"
+                    onClick={() => setSelectedDestination(dest)}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                      isSelected
+                        ? 'bg-[#C9A86A] text-[#0A0A0A] font-semibold'
+                        : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
+                    }`}
+                  >
+                    {dest.destinationId} · {dest.nameEn} ({dest.elevationMeters}m)
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <label
+                htmlFor="all-100-destinations-select"
+                className="text-xs font-mono text-[#C9A86A] whitespace-nowrap"
+              >
+                All {ALL_100_FEATURED_DESTINATIONS.length} Destinations:
+              </label>
+              <select
+                id="all-100-destinations-select"
+                aria-label="Inspect any of the 100 Featured Destinations (DEST-001 to DEST-100)"
+                value={selectedDestination.destinationId}
+                onChange={(e) => {
+                  const found = ALL_100_FEATURED_DESTINATIONS.find(
+                    (d) => d.destinationId === e.target.value
+                  );
+                  if (found) {
+                    setSelectedDestination(found);
+                  }
+                }}
+                className="bg-[#0A0A0A] border border-neutral-700 focus:border-[#FFD700] rounded-lg px-3 py-2 text-xs text-white font-mono"
+              >
+                {ALL_100_FEATURED_DESTINATIONS.map((dest) => (
+                  <option key={dest.destinationId} value={dest.destinationId}>
+                    {dest.destinationId} — {dest.nameEn} ({dest.elevationMeters}m · {dest.status})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Selected Destination Comprehensive Dossier Card */}

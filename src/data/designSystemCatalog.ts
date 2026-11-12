@@ -19,6 +19,9 @@ import {
   ReviewerQualificationTier,
   RiskLevel,
 } from '../types/taxonomy.ts';
+import { ALL_100_FEATURED_DESTINATIONS } from './destinations100Catalog.ts';
+
+export { ALL_100_FEATURED_DESTINATIONS };
 
 export const GENERATED_BRAND_IMAGES = {
   everestHero: '/src/assets/images/everest_sagarmatha_hero_1794479895134.jpg',
