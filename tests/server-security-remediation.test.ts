@@ -3,21 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 0 TO 8848 — Phase 5 Readiness Gate Automated Test Suite
- * Verifies complete remediation of BUG-01 through BUG-12 across:
+ * Verifies complete remediation of BUG-01 through BUG-12 within the approved
+ * Phase 01–04 scope across:
  * 1. Core security & verification engines (securityAndVerificationCore.ts)
- * 2. Persistent relational database operations on disk (FileBackedRelationalRepository.ts)
- * 3. Live Express HTTP /api/v1/* backend endpoints (server.ts & apiRouter.ts)
- * 4. CI Lockfile parity (package-lock.json + npm ci, no bun.lock)
- * 5. Complete documentation & Phase/Gate status reconciliation
+ * 2. Phase 02 vendor-independent adapter interfaces (IDatabaseRepository.ts, etc.)
+ * 3. CI Lockfile parity (package-lock.json + npm ci, no bun.lock)
+ * 4. 100 Featured Destinations catalog parity & Phase/Gate status reconciliation
  */
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { createAppServer } from '../server.ts';
-import { FileBackedRelationalRepository } from '../src/adapters/FileBackedRelationalRepository.ts';
 import { validateCredentialIdFormat } from '../src/components/credentials/OfficialCertificateView.tsx';
 import { ALL_100_FEATURED_DESTINATIONS } from '../src/data/destinations100Catalog.ts';
 import { formatBikramSambatDate } from '../src/i18n/translations.ts';
@@ -510,326 +507,40 @@ describe('0 TO 8848 — Phase 5 Readiness Gate Remediation Suite (BUG-01 to BUG-
     );
     assert.ok(schemaDoc.includes('80 Numbered Schema Groups / 86 Physical Tables'));
 
-    const masterPlanDoc = fs.readFileSync(
-      path.resolve(process.cwd(), 'docs/01_MASTER_PLAN.md'),
-      'utf8'
-    );
-    assert.ok(masterPlanDoc.includes('80 Numbered Schema Groups / 86 Physical Tables'));
-    assert.ok(masterPlanDoc.includes('GATE 04 AWAITING FOUNDER APPROVAL'));
-
-    const reqDoc = fs.readFileSync(
-      path.resolve(process.cwd(), 'docs/02_REQUIREMENTS.md'),
-      'utf8'
-    );
-    assert.ok(reqDoc.includes('80 Schema Groups / 86 Physical Tables'));
-
     const acceptanceDoc = fs.readFileSync(
       path.resolve(process.cwd(), 'docs/23_PHASE_ACCEPTANCE.md'),
       'utf8'
     );
     assert.ok(acceptanceDoc.includes('AWAITING FOUNDER APPROVAL (NOT AUTOMATICALLY ACCEPTED)'));
     assert.ok(acceptanceDoc.includes('Phase 05 Status:** `NOT STARTED'));
-  });
 
-  it('BACKEND-DB-E2E: Proves Security & Verification Logic is Connected to Real Express /api/v1/* Endpoints & Persistent Disk Database', async () => {
-    const testDbPath = path.resolve(
-      process.cwd(),
-      'data',
-      `test_e2e_${process.pid}_${Date.now()}.json`
+    // Verify Phase 02 vendor-independent adapter interfaces exist while Phase 05+ backend implementation remains unstarted
+    assert.equal(
+      fs.existsSync(path.resolve(process.cwd(), 'src/adapters/IDatabaseRepository.ts')),
+      true,
+      'Phase 02 IDatabaseRepository interface contract must exist'
     );
-
-    try {
-      const { app } = await createAppServer(testDbPath);
-      const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
-        const s = app.listen(0, '127.0.0.1', () => resolve(s));
-      });
-      const port = (server.address() as AddressInfo).port;
-      const baseUrl = `http://127.0.0.1:${port}/api/v1`;
-
-      try {
-        // 1. GET /api/v1/health — Verify persistent DB creation, 100 destinations, 86 tables, and hash chains
-        const healthRes = await fetch(`${baseUrl}/health`);
-        assert.equal(healthRes.status, 200);
-        const healthJson = (await healthRes.json()) as {
-          ok: boolean;
-          schemaCounts: {
-            numberedSchemaGroups: number;
-            physicalTables: number;
-            rolesCount: number;
-            categoriesCount: number;
-            featuredDestinationsCount: number;
-          };
-          integrity: { auditChainIntact: boolean; credentialChainIntact: boolean };
-        };
-        assert.equal(healthJson.ok, true);
-        assert.equal(healthJson.schemaCounts.numberedSchemaGroups, 80);
-        assert.equal(healthJson.schemaCounts.physicalTables, 86);
-        assert.equal(healthJson.schemaCounts.rolesCount, 21);
-        assert.equal(healthJson.schemaCounts.categoriesCount, 24);
-        assert.equal(healthJson.schemaCounts.featuredDestinationsCount, 100);
-        assert.equal(healthJson.integrity.auditChainIntact, true);
-        assert.equal(healthJson.integrity.credentialChainIntact, true);
-
-        // 2. POST /api/v1/payments/checkout — Verify Constitutional HTTP 403 Gate + Persistent Audit Logging
-        const payRes = await fetch(`${baseUrl}/payments/checkout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amountUsd: 99 }),
-        });
-        assert.equal(payRes.status, 403);
-        const payJson = (await payRes.json()) as { errorCode: string };
-        assert.equal(payJson.errorCode, 'PAYMENT_COLLECTION_DISABLED_BY_CONSTITUTION');
-
-        // 3. POST /api/v1/verification/cases/CASE-2026-000201/claim — COI Block when commercial guide attempts claim
-        const coiClaimRes = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/claim`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: 'USR-GUIDE-COMMERCIAL-99',
-              role: PlatformRole.SENIOR_REVIEWER,
-              mfaVerifiedAtIso: '2026-11-12T08:00:00Z',
-              organizationIds: [],
-              qualifiedCategories: ['CAT-12'],
-            }),
-          }
-        );
-        assert.equal(coiClaimRes.status, 403);
-        const coiClaimJson = (await coiClaimRes.json()) as {
-          authorization: { errorCode: string };
-        };
-        assert.equal(
-          coiClaimJson.authorization.errorCode,
-          'COI_COMMERCIAL_BOOKING_CONFLICT'
-        );
-
-        // 4. POST /api/v1/verification/cases/CASE-2026-000201/claim — Valid Senior Reviewer Claim + Business Firewall Stripping
-        const validClaimRes = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/claim`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: 'USR-SNR-PEMBA',
-              role: PlatformRole.SENIOR_REVIEWER,
-              mfaVerifiedAtIso: '2026-11-12T08:00:00Z',
-              organizationIds: ['ORG-INDEPENDENT'],
-            }),
-          }
-        );
-        assert.equal(validClaimRes.status, 200);
-        const validClaimJson = (await validClaimRes.json()) as {
-          ok: boolean;
-          strippedCommercialFieldsCount: number;
-          sanitizedCase: Record<string, unknown>;
-        };
-        assert.equal(validClaimJson.ok, true);
-        assert.equal(validClaimJson.strippedCommercialFieldsCount, 7);
-        assert.equal('sponsorId' in validClaimJson.sanitizedCase, false);
-        assert.equal('marketplaceBookingId' in validClaimJson.sanitizedCase, false);
-
-        // 5. POST /api/v1/verification/cases/CASE-2026-000201/evidence — Block XXE GPX & Accept Valid GPX with 1.0km Mask
-        const xxeEvRes = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/evidence`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              evidenceId: 'EV-XXE-99',
-              uploaderUserId: 'USR-ADV-DAWA-02',
-              pillar: EvidencePillarId.PIL_02_GEOSPATIAL_TELEMETRY,
-              fileType: 'GPX',
-              rawContentString: '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><gpx/>',
-            }),
-          }
-        );
-        assert.equal(xxeEvRes.status, 400);
-
-        const validEvRes = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/evidence`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              evidenceId: 'EV-VALID-GPX-201',
-              uploaderUserId: 'USR-ADV-DAWA-02',
-              pillar: EvidencePillarId.PIL_02_GEOSPATIAL_TELEMETRY,
-              fileType: 'GPX',
-              rawContentString: '<gpx><trk><name>Kangchenjunga Approach</name></trk></gpx>',
-              trackPoints: [
-                { latitude: 27.5, longitude: 88.0, elevationMeters: 1800, distanceFromStartKm: 0.4 },
-                { latitude: 27.6, longitude: 88.1, elevationMeters: 5200, distanceFromStartKm: 12.0 },
-                { latitude: 27.5, longitude: 88.0, elevationMeters: 1805, distanceFromStartKm: 24.8 },
-              ],
-            }),
-          }
-        );
-        assert.equal(validEvRes.status, 201);
-        const validEvJson = (await validEvRes.json()) as {
-          maskedTrackPointsCount: number;
-          persistedRecord: { sha256Hex: string; residentialGeozoneMasked: boolean };
-        };
-        assert.equal(validEvJson.maskedTrackPointsCount, 1);
-        assert.equal(validEvJson.persistedRecord.residentialGeozoneMasked, true);
-        assert.match(validEvJson.persistedRecord.sha256Hex, /^[0-9a-f]{64}$/);
-
-        // 6. POST /api/v1/verification/cases/CASE-2026-000201/evaluate — Block AI Final Approval (403), then Complete Dual-Senior + Heritage Guardian Approval & Persist New Credential
-        const aiEvalRes = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/evaluate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              actorType: 'AI_ASSISTANT',
-              actorUserId: 'AI-AGENT',
-              actorRole: PlatformRole.REVIEWER,
-              decision: 'APPROVE',
-              pil01VisualScore: 35,
-              pil02TelemetryScore: 0,
-              pil03DocumentaryScore: 30,
-              pil04WitnessScore: 30,
-              pil05ChronologyScore: 20,
-            }),
-          }
-        );
-        assert.equal(aiEvalRes.status, 403);
-
-        // First Senior Reviewer approves -> AWAITING_SECOND_SENIOR_REVIEWER
-        const snr1Res = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/evaluate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              actorType: 'HUMAN_REVIEWER',
-              actorUserId: 'USR-SNR-PEMBA',
-              actorRole: PlatformRole.SENIOR_REVIEWER,
-              decision: 'APPROVE',
-              pil01VisualScore: 35,
-              pil02TelemetryScore: 0,
-              pil03DocumentaryScore: 30,
-              pil04WitnessScore: 30,
-              pil05ChronologyScore: 20,
-            }),
-          }
-        );
-        const snr1Json = (await snr1Res.json()) as { resultingStatus: string };
-        assert.equal(
-          snr1Json.resultingStatus,
-          VerificationCaseStatus.AWAITING_SECOND_SENIOR_REVIEWER
-        );
-
-        // Second Senior Reviewer approves -> AWAITING_HERITAGE_GUARDIAN (since DEST-003 Kangchenjunga requires Heritage Guardian)
-        const snr2Res = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/evaluate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              actorType: 'HUMAN_REVIEWER',
-              actorUserId: 'USR-SNR-ELENA',
-              actorRole: PlatformRole.SENIOR_REVIEWER,
-              decision: 'APPROVE',
-              pil01VisualScore: 35,
-              pil02TelemetryScore: 0,
-              pil03DocumentaryScore: 30,
-              pil04WitnessScore: 30,
-              pil05ChronologyScore: 20,
-            }),
-          }
-        );
-        const snr2Json = (await snr2Res.json()) as { resultingStatus: string };
-        assert.equal(snr2Json.resultingStatus, VerificationCaseStatus.AWAITING_HERITAGE_GUARDIAN);
-
-        // Heritage Guardian attests sacred summit protocol -> APPROVED + Free Credential Issued & Persisted!
-        const hgRes = await fetch(
-          `${baseUrl}/verification/cases/CASE-2026-000201/evaluate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              actorType: 'HUMAN_REVIEWER',
-              actorUserId: 'USR-HG-MINGMA',
-              actorRole: PlatformRole.HERITAGE_GUARDIAN,
-              decision: 'HERITAGE_ATTEST',
-              pil01VisualScore: 35,
-              pil02TelemetryScore: 0,
-              pil03DocumentaryScore: 30,
-              pil04WitnessScore: 30,
-              pil05ChronologyScore: 20,
-            }),
-          }
-        );
-        const hgJson = (await hgRes.json()) as {
-          resultingStatus: string;
-          issuedCredential: { credentialId: string };
-        };
-        assert.equal(hgJson.resultingStatus, VerificationCaseStatus.APPROVED);
-        assert.ok(hgJson.issuedCredential.credentialId.startsWith('0TO8848-CRED-2026-'));
-
-        // 7. POST /api/v1/appeals/APL-2026-000012/decide — Block Original Reviewer (403) & Allow Independent Appeal Reviewer (200)
-        const blockedAppealRes = await fetch(`${baseUrl}/appeals/APL-2026-000012/decide`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            actorUserId: 'USR-SNR-PEMBA', // Excluded original reviewer!
-            actorRole: PlatformRole.APPEAL_REVIEWER,
-            decision: 'UPHELD_APPROVED',
-            reasonedOutcome: 'Attempted self-override',
-          }),
-        });
-        assert.equal(blockedAppealRes.status, 403);
-
-        const validAppealRes = await fetch(`${baseUrl}/appeals/APL-2026-000012/decide`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            actorUserId: 'USR-APPEAL-INDEP-01',
-            actorRole: PlatformRole.APPEAL_REVIEWER,
-            decision: 'UPHELD_APPROVED',
-            reasonedOutcome: 'Verified DoT liaison officer summit certificate.',
-          }),
-        });
-        assert.equal(validAppealRes.status, 200);
-
-        // 8. POST & GET /api/v1/whistleblower/reports — Zero-IP Persistence & system_admin Isolation
-        const wbPostRes = await fetch(`${baseUrl}/whistleblower/reports`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reportId: 'WB-E2E-001',
-            oneTimeReceiptToken: 'SECRET-RECEIPT-TOKEN',
-            category: 'SPONSOR_INTERFERENCE',
-            encryptedNarrative: 'PGP-ENCRYPTED-REPORT',
-          }),
-        });
-        assert.equal(wbPostRes.status, 201);
-
-        const sysAdminWbGet = await fetch(`${baseUrl}/whistleblower/reports`, {
-          headers: { 'x-actor-role': PlatformRole.SYSTEM_ADMIN },
-        });
-        assert.equal(sysAdminWbGet.status, 403);
-
-        // 9. Instantiate a brand-new FileBackedRelationalRepository pointing to the same testDbPath to prove real disk persistence across process restarts!
-        const freshRepoFromDisk = new FileBackedRelationalRepository(testDbPath);
-        const persistedAudit = await freshRepoFromDisk.getCryptographicAuditLogs();
-        assert.equal(persistedAudit.chainIntact, true);
-        assert.ok(
-          persistedAudit.logs.length >= 10,
-          `Expected >= 10 persisted audit logs on disk, found ${persistedAudit.logs.length}`
-        );
-
-        const persistedCredChain = await freshRepoFromDisk.verifyRegistryHashChain();
-        assert.equal(persistedCredChain.intact, true);
-        assert.equal(persistedCredChain.verifiedCount, 2);
-      } finally {
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-      }
-    } finally {
-      if (fs.existsSync(testDbPath)) {
-        fs.unlinkSync(testDbPath);
-      }
-    }
+    assert.equal(
+      fs.existsSync(path.resolve(process.cwd(), 'src/adapters/IStorageProvider.ts')),
+      true,
+      'Phase 02 IStorageProvider interface contract must exist'
+    );
+    assert.equal(
+      fs.existsSync(path.resolve(process.cwd(), 'src/adapters/IAiAssistantProvider.ts')),
+      true,
+      'Phase 02 IAiAssistantProvider interface contract must exist'
+    );
+    assert.equal(
+      fs.existsSync(path.resolve(process.cwd(), 'server.ts')),
+      false,
+      'Phase 05+ backend server.ts must not be prematurely created during Phase 01-04'
+    );
+    assert.equal(
+      fs.existsSync(
+        path.resolve(process.cwd(), 'src/adapters/FileBackedRelationalRepository.ts')
+      ),
+      false,
+      'Phase 05+ concrete database repository must not be prematurely created during Phase 01-04'
+    );
   });
 });

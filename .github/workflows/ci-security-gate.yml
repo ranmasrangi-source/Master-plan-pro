@@ -22,9 +22,13 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
 
-      - name: Install Dependencies (Deterministic Lock)
-        run: npm install
+      - name: Verify Single Lockfile (package-lock.json present, no bun.lock)
+        run: test -f package-lock.json && test ! -f bun.lock
+
+      - name: Install Dependencies (Deterministic Clean Install)
+        run: npm ci
 
       - name: Step 1 — Secret & Constitutional Lock Scanner
         run: npm run security:scan
