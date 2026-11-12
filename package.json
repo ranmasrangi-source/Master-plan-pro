@@ -12,7 +12,8 @@
     "pretest": "rm -f bun.lock",
     "test": "node --import tsx --test tests/*.test.ts",
     "security:scan": "tsx scripts/security-scan.ts",
-    "security:audit": "npm audit --audit-level=low"
+    "security:audit": "npm audit --audit-level=low",
+    "security:branch-protection": "tsx scripts/branch-protection.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

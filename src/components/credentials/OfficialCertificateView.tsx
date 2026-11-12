@@ -166,7 +166,7 @@ const PHASE04_DESIGN_PREVIEW_FIXTURE: CredentialPreviewFixtureRecord = (() => {
 
 /**
  * AUD-03 Remediation: Deterministic Credential Verification Portal Lookup
- * - Never returns a fake VALID status in Phase 04 (live credential issuance belongs to Phase 09+).
+ * - Never returns a fake VALID status in Phase 04 (live credential issuance belongs to Phase 13).
  * - Returns HTTP 400 INVALID_FORMAT for malformed IDs.
  * - Returns HTTP 404 NOT_FOUND for any unknown valid-format Credential ID.
  * - Returns HTTP 200 DESIGN_PREVIEW_ONLY (isRealAchievement: false) ONLY for the documented
@@ -282,7 +282,7 @@ export const OfficialCertificateView: React.FC<OfficialCertificateViewProps> = (
           </p>
           <p className="text-xs text-neutral-400 font-mono">
             Note: In Phase 04 (Brand &amp; UI/UX Architecture), live credential issuance and database
-            persistence are not yet active (scheduled for Phase 09). Only the non-live design
+            persistence are not yet active (scheduled for Phase 13 per REQ-CONST-01 &amp; REQ-NF-03). Only the non-live design
             specification fixture <span className="text-[#C9A86A]">0TO8848-CRED-2026-000108</span>{' '}
             is available for layout inspection.
           </p>
@@ -309,7 +309,7 @@ export const OfficialCertificateView: React.FC<OfficialCertificateViewProps> = (
           PHASE 04 UI DESIGN SPECIFICATION FIXTURE — NOT A REAL ISSUED ACHIEVEMENT
         </span>
         <span className="text-neutral-300">
-          isRealAchievement: false · Live Issuance Gate: Phase 09
+          isRealAchievement: false · Live Issuance Gate: Phase 13
         </span>
       </div>
 

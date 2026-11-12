@@ -1,133 +1,108 @@
-# 0 TO 8848 — PHASE 04 FINAL AUDIT CORRECTION & CLOSURE REPORT
+# 0 TO 8848 — PHASE 04 INDEPENDENT AUDIT REMEDIATION & CLOSURE REPORT
 
 **Repository:** `https://github.com/ranmasrangi-source/Master-plan-pro`  
-**Independently Verified Remote `main` Head SHA:** `02a4f4838d09469d1a005755cda98c9bed2bd159` (short SHA `02a4f483`, referenced in audit instructions as `02a4f483...`; Git Tree SHA: `83b08d2b9c12e051b9b0a5f7828271c2a9f9a224`)  
-**Latest Verified Green GitHub Actions Run ID:** `43316943828` (Run `#6`, Attempt `#1`)  
-**Latest Verified Green GitHub Actions Run URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43316943828`  
-**Latest Verified Green GitHub Actions Job URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43316943828/job/131527309906`  
+**Independently Verified Remote `main` Head SHA (Prior to Current Remediation Commit):** `432d4db065c60d79612f2f5409845ca79a7ef26d` (short SHA `432d4db`; Git Tree SHA: `039ce87760e408822dafcf24025e0fc8819da631`)  
+**Latest Verified Green GitHub Actions Run ID:** `43319529253` (Run `#7`, Attempt `#1`)  
+**Latest Verified Green GitHub Actions Run URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43319529253`  
+**Latest Verified Green GitHub Actions Job URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43319529253/job/131536239592`  
 **Gate 04 Status:** `AWAITING FOUNDER APPROVAL (NOT AUTOMATICALLY ACCEPTED)`  
-**Phase 05 Status:** `BLOCKED / NOT STARTED (AWAITING EXPLICIT WRITTEN FOUNDER APPROVAL)`
+**Phase 05 Status:** `NOT STARTED (BLOCKED / LOCKED PENDING EXPLICIT WRITTEN FOUNDER APPROVAL)`
 
 ---
 
-## 1. Independent Verification of Latest Remote Commit & GitHub Actions Run `43316943828`
+## 1. Independent Verification of Remote Commit `432d4db` & CI Run `43319529253` (`AUD-02`)
 
-### 1.1 Remote Commit Verification (`refs/heads/main`)
-Queried via `git ls-remote https://github.com/ranmasrangi-source/Master-plan-pro.git refs/heads/main` and `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/commits/02a4f4838d09469d1a005755cda98c9bed2bd159`:
-- **Remote Branch `refs/heads/main` Head SHA:** `02a4f4838d09469d1a005755cda98c9bed2bd159` (matches the `02a4f483` commit prefix in the audit directive; Git Tree SHA: `83b08d2b9c12e051b9b0a5f7828271c2a9f9a224`).
-- **Commit Author & Timestamp:** `ranmasrangi-source <ranmasrangi@gmail.com>` at `2026-11-12T22:07:33Z`.
-- **Commit Message:** `"docs: update Phase 04 acceptance and audit records"`.
-
-### 1.2 Remote GitHub Actions Run `43316943828` Verification
-Queried via `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/actions/runs/43316943828` and `.../runs/43316943828/jobs`:
+Queried via `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/commits/432d4db065c60d79612f2f5409845ca79a7ef26d` and `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/actions/runs/43319529253/jobs`:
 
 | Property | Verified Remote Value |
 | :--- | :--- |
 | **Workflow** | `0 TO 8848 — CI, Security & Constitutional Gate` (`.github/workflows/ci-security-gate.yml`) |
-| **Head Commit SHA** | `02a4f4838d09469d1a005755cda98c9bed2bd159` |
-| **Run ID / Run Number** | `43316943828` (Run `#6`, Attempt `#1`) |
-| **Run URL** | `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43316943828` |
-| **Job ID & URL** | `131527309906` (`https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43316943828/job/131527309906`) |
-| **Started / Completed** | `2026-11-12T22:07:37Z` → `2026-11-12T22:07:54Z` (`17s`) |
+| **Remote `main` Commit SHA** | `432d4db065c60d79612f2f5409845ca79a7ef26d` (`https://github.com/ranmasrangi-source/Master-plan-pro/commit/432d4db065c60d79612f2f5409845ca79a7ef26d`) |
+| **Remote Git Tree SHA** | `039ce87760e408822dafcf24025e0fc8819da631` |
+| **Run ID / Run Number** | `43319529253` (Run `#7`, Attempt `#1`) |
+| **Run URL** | `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43319529253` |
+| **Job ID & URL** | `131536239592` (`https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43319529253/job/131536239592`) |
+| **Started / Completed** | `2026-11-12T22:24:05Z` → `2026-11-12T22:24:22Z` (`17s`) |
 | **Overall Status / Conclusion** | `completed` / **`success`** |
 
 | Step # | Step Name | Command / Action | Status | Conclusion | Timestamps (UTC) |
 | :---: | :--- | :--- | :---: | :---: | :--- |
-| 1 | `Set up job` | Runner setup (`GitHub Actions 1000000032`) | `completed` | `success` | `22:07:38Z` → `22:07:39Z` |
-| 2 | `Checkout Repository` | `actions/checkout@v4` | `completed` | `success` | `22:07:39Z` → `22:07:40Z` |
-| 3 | `Setup Node.js 22 LTS` | `actions/setup-node@v4` (`cache: 'npm'`, `package-lock.json`) | `completed` | `success` | `22:07:40Z` → `22:07:41Z` |
-| 4 | `Verify Single Lockfile (package-lock.json present, no bun.lock)` | `test -f package-lock.json && test ! -f bun.lock` | `completed` | `success` | `22:07:41Z` → `22:07:41Z` |
-| 5 | `Install Dependencies (Deterministic Clean Install)` | `npm ci` | `completed` | `success` | `22:07:41Z` → `22:07:48Z` |
-| 6 | `Step 1 — Secret & Constitutional Lock Scanner` | `npm run security:scan` | `completed` | `success` | `22:07:48Z` → `22:07:48Z` |
-| 7 | `Step 2 — Dependency Vulnerability Audit (npm audit)` | `npm run security:audit` (`npm audit --audit-level=low`) | `completed` | `success` | `22:07:48Z` → `22:07:49Z` |
-| 8 | `Step 3 — Strict TypeScript Verification (tsc --noEmit)` | `npm run lint` | `completed` | `success` | `22:07:49Z` → `22:07:50Z` |
-| 9 | `Step 4 — Automated Test Suite Execution` | `npm test` (`19/19` tests across 3 suites) | `completed` | `success` | `22:07:50Z` → `22:07:51Z` |
-| 10 | `Step 5 — Production Bundle & Build Integrity Check` | `npm run build` (`vite build`) | `completed` | `success` | `22:07:51Z` → `22:07:52Z` |
-| 19 | `Post Setup Node.js 22 LTS` | Save npm cache | `completed` | `success` | `22:07:52Z` → `22:07:52Z` |
-| 20 | `Post Checkout Repository` | Clean checkout state | `completed` | `success` | `22:07:52Z` → `22:07:52Z` |
-| 21 | `Complete job` | Finalize job | `completed` | `success` | `22:07:52Z` → `22:07:52Z` |
+| 1 | `Set up job` | Runner setup (`GitHub Actions 1000000033`) | `completed` | `success` | `22:24:06Z` → `22:24:07Z` |
+| 2 | `Checkout Repository` | `actions/checkout@v4` | `completed` | `success` | `22:24:07Z` → `22:24:08Z` |
+| 3 | `Setup Node.js 22 LTS` | `actions/setup-node@v4` (`cache: 'npm'`, `package-lock.json`) | `completed` | `success` | `22:24:08Z` → `22:24:11Z` |
+| 4 | `Verify Single Lockfile (package-lock.json present, no bun.lock)` | `test -f package-lock.json && test ! -f bun.lock` | `completed` | `success` | `22:24:11Z` → `22:24:11Z` |
+| 5 | `Install Dependencies (Deterministic Clean Install)` | `npm ci` | `completed` | `success` | `22:24:11Z` → `22:24:16Z` |
+| 6 | `Step 1 — Secret & Constitutional Lock Scanner` | `npm run security:scan` | `completed` | `success` | `22:24:16Z` → `22:24:16Z` |
+| 7 | `Step 2 — Dependency Vulnerability Audit (npm audit)` | `npm run security:audit` (`npm audit --audit-level=low`) | `completed` | `success` | `22:24:16Z` → `22:24:17Z` |
+| 8 | `Step 3 — Strict TypeScript Verification (tsc --noEmit)` | `npm run lint` | `completed` | `success` | `22:24:17Z` → `22:24:17Z` |
+| 9 | `Step 4 — Automated Test Suite Execution` | `npm test` (`19/19` tests across 3 suites) | `completed` | `success` | `22:24:17Z` → `22:24:18Z` |
+| 10 | `Step 5 — Production Bundle & Build Integrity Check` | `npm run build` (`vite build`) | `completed` | `success` | `22:24:18Z` → `22:24:19Z` |
 
 ---
 
-## 2. Explicit Distinction of Implementation Stages (Phase 01–04 Boundary)
+## 2. Finding-by-Finding Remediation Matrix (`AUD-01` through `AUD-05`)
 
-| Category | What Exists in Repository (`Phase 01–04`) | What Does NOT Exist Yet (`Deferred to Phase 05+`) |
+| Finding ID | Severity | Finding Description | Current Status | Code Changes, Verification Evidence & Honest Limitations |
+| :--- | :---: | :--- | :---: | :--- |
+| **AUD-01** | **HIGH** | GitHub `main` branch protection is disabled (`protection.enabled: false`). Enable branch protection and require successful CI checks before merging changes into `main`. | **POLICY & PROVISIONER IMPLEMENTED IN CODE; REMOTE ACTIVATION REQUIRES REPO OWNER ADMIN TOKEN / GITHUB UI** | 1. **Live Remote Status Inspected:** `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/branches/main` returns `"protection": { "enabled": false }`.<br>2. **Why Remote API Cannot Be Mutated From Inside AI Studio Sandbox:** The AI Studio container has zero GitHub authentication credentials (`env` and `~/.gitconfig` contain no GitHub PAT), and GitHub's `PUT /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection` endpoint requires an authenticated token from the repository owner (`ranmasrangi-source`) with `Administration: Read and write` permission.<br>3. **Code Implemented (`/scripts/branch-protection.ts`, `/package.json`, `/.github/workflows/ci-security-gate.yml`):** Created `CANONICAL_MAIN_BRANCH_PROTECTION_POLICY` requiring `strict: true`, status check `"Secret Scan, Type Check, Test Suite & Build Integrity"`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`, and `required_conversation_resolution: true`. Added `"security:branch-protection": "tsx scripts/branch-protection.ts"` and Step 6 in `.github/workflows/ci-security-gate.yml` so that either setting repository secret `BRANCH_PROTECTION_ADMIN_TOKEN` or running `GITHUB_ADMIN_TOKEN=<token> npm run security:branch-protection -- --apply` provisions the rule immediately.<br>4. **Tested:** Verified by `INFRA-TEST-05 & AUD-01` in `tests/infrastructure-phase03.test.ts`. |
+| **AUD-02** | **MEDIUM** | Update `docs/23_PHASE_ACCEPTANCE.md` and `POST_CI_AUDIT_CLOSURE_REPORT.md` to record `HEAD` `432d4db065c60d79612f2f5409845ca79a7ef26d` and CI `43319529253`. | **FIXED** | Updated both `/docs/23_PHASE_ACCEPTANCE.md` (Section 2) and `/POST_CI_AUDIT_CLOSURE_REPORT.md` (Header & Section 1) with the independently verified commit `432d4db065c60d79612f2f5409845ca79a7ef26d` (`tree 039ce87760e408822dafcf24025e0fc8819da631`) and GitHub Actions Run `43319529253` (Job `131536239592`, `completed / success`). *(Note: Committing these `AUD-01..05` updates creates a new local commit on top of `432d4db` that will trigger the next CI run when synced to GitHub.)* |
+| **AUD-03** | **MEDIUM** | Clarify the authoritative 21-phase roadmap. Do not invent or modify the approved 21 phases. | **FIXED** | 1. Documented the complete, authoritative **21-Phase Master Execution Roadmap (`PHASE 01` through `PHASE 21` and `Gate 01` through `Gate 21`)** in `/docs/22_CHANGE_CONTROL.md` (Section 2), strictly aligned with `/docs/01_MASTER_PLAN.md` and the Requirements Traceability Matrix in `/docs/02_REQUIREMENTS.md`.<br>2. Reconciled `/src/components/credentials/OfficialCertificateView.tsx` (lines 169, 284, 310) so live credential issuance references **Phase 13** (*Badges, Verifiable Certificates, Credential Registry & Public Portal* per `REQ-CONST-01` & `REQ-NF-03`) rather than Phase 09 (*Global Destinations & Routes* per `REQ-DEST-A6` & `CHK-01.15`).<br>3. Added automated test assertion in `tests/infrastructure-phase03.test.ts` (`INFRA-TEST-04 & AUD-03`) verifying all 21 phases (`PHASE 01`..`PHASE 21`) and gates (`Gate 01`..`Gate 21`) in `docs/22_CHANGE_CONTROL.md`. |
+| **AUD-04** | **MEDIUM** | Expand secret scanning coverage in a controlled manner. Do not introduce false claims of complete secret detection. | **FIXED** | 1. Expanded `SECRET_PATTERNS` in `/scripts/security-scan.ts` from 5 to 10 high-precision deterministic regex rules (`SEC-SCAN-001` through `SEC-SCAN-010`), adding: AWS temporary key IDs (`ASIA...`), DSA/ENCRYPTED/PGP private key headers, GitHub OAuth/App/Refresh tokens (`gho_`, `ghu_`, `ghs_`, `ghr_`), Slack tokens (`xoxb-`, `xoxp-`, etc.), OpenAI/Anthropic secret keys (`sk-proj-`, `sk-ant-api03-`), PostgreSQL/MongoDB/Redis connection URIs with embedded passwords, and hardcoded JWT bearer literals (`eyJ...`).<br>2. Explicitly documented in code comments, CLI output, and this report that `scripts/security-scan.ts` is a **10-rule deterministic pattern scanner and constitutional lock verifier**, and does **not** perform entropy analysis, custom password detection, binary inspection, or full git-history secret detection.<br>3. Added unit test coverage in `tests/infrastructure-phase03.test.ts` (`INFRA-TEST-01 & AUD-04`) testing synthetic tokens against all 10 rules (`SEC-SCAN-001..010`) and confirming `0` matches across the repository. |
+| **AUD-05** | **MEDIUM** | Keep the Phase 04 / Phase 05 boundary explicit. Backend HTTP middleware, live authentication, database persistence, and evidence storage remain future implementation work. | **FIXED** | Preserved and documented in `/docs/23_PHASE_ACCEPTANCE.md` (Section 3), `/docs/22_CHANGE_CONTROL.md` (Section 2), and Section 3 below. Neither `server.ts` nor `src/adapters/FileBackedRelationalRepository.ts` exists (`fs.existsSync` verified `false` in `tests/server-security-remediation.test.ts`). |
+
+---
+
+## 3. Explicit Phase 04 / Phase 05 Architectural Boundary (`AUD-05` & `BUG-06`)
+
+| Capability / Component | Phase 04 Status (Current Repository State) | Future Implementation Phase (Approved 21-Phase Roadmap) |
 | :--- | :--- | :--- |
-| **1. Implemented Functionality (Pure TypeScript & CLI)** | - `src/services/securityAndVerificationCore.ts`: Pure TypeScript functions for RBAC/COI checks (`authorizeReviewerClaimAndAction`), 5-Pillar ECF math (`evaluateServerEcfAssessment`), verification decision gate (`evaluateVerificationDecisionGate`), GPX/photo payload sanitization (`sanitizeAndHashEvidenceUpload`), West VO2max & 64-bit pHash anti-fraud math (`evaluateScientificAntiFraud`), FIPS 180-4 SHA-256 hash chaining (`computeSha256Hex`, `appendCryptographicAuditRecord`, `verifyCryptographicAuditChainDetailed`), deep allowlist projection (`sanitizeCaseForReviewerFirewall`), appeal reviewer independence check (`authorizeIndependentAppealDecision`), and path-prefix gate helper (`enforceConstitutionalEndpointGate`).<br>- `src/i18n/translations.ts`: Bilingual (`EN`/`NE`) & RTL (`AR`) dictionary + Bikram Sambat (`formatBikramSambatDate`) date validator/converter.<br>- `src/data/destinations100Catalog.ts`: Full 100-item `ALL_100_FEATURED_DESTINATIONS` array (`DEST-001` to `DEST-100`).<br>- `scripts/security-scan.ts`: CLI secret regex scanner & `CONSTITUTIONAL_LOCKS` verifier. | - No HTTP server (`server.ts` does not exist).<br>- No Express route handlers or live HTTP middleware.<br>- No relational database connection, SQL migrations, or concrete `IDatabaseRepository` implementation.<br>- No live user authentication, session store, or TOTP MFA verification endpoint.<br>- No live file upload storage or EXIF/GPX binary stream parser. |
-| **2. Documentation & Specification** | - 16 Markdown specification documents in `/docs/` (`00_PROJECT_CONSTITUTION.md` through `23_PHASE_ACCEPTANCE.md`).<br>- Compile-time TypeScript interfaces and enums in `src/types/constitution.ts`, `src/types/taxonomy.ts`, `src/types/verification.ts`, and `src/adapters/IDatabaseRepository.ts`, `IStorageProvider.ts`, `IAiAssistantProvider.ts`. | - Specifications in `/docs/07_SYSTEM_ARCHITECTURE.md` (25 services), `/docs/08_DATABASE_SCHEMA.md` (80 schema groups / 86 physical tables), and `/docs/09_API_SPECIFICATION.md` (`/api/v1/*`) are architectural blueprints for Phases 05–18, not deployed services. |
-| **3. UI Prototype** | - `src/App.tsx`: Interactive Phase 04 Design System showcase, 100-Destination explorer, 42-Page public website directory inspector, interactive ECF calculator, Low-Bandwidth toggle, and locale switcher.<br>- `src/components/credentials/OfficialCertificateView.tsx`: Certificate UI preview & client-side lookup function (`lookupCredentialVerificationPortal`).<br>- `src/components/credentials/DestinationBadge3D.tsx`: 3D metallic shield & low-bandwidth SVG badge renderer.<br>- `src/components/geospatial/AccessibleRouteProfile.tsx`: WCAG 2.2 AA SVG elevation profile & accessible HTML table.<br>- `src/components/security/SecurityIncidentIntelligence.tsx`: Recharts telemetry dashboard & client-side SHA-256 hash-chained log table. | - UI components operate over deterministic in-memory state and catalog fixtures; they do not fetch from or persist to a backend API or database in Phase 04. |
-| **4. Automated Test Evidence** | - `tests/infrastructure-phase03.test.ts` (5 subtests)<br>- `tests/server-security-remediation.test.ts` (8 subtests)<br>- `tests/ui-accessibility-i18n-phase04.test.ts` (6 subtests)<br>- Total: **3 test files, 19 subtests** executed via Node's test runner (`npm test`). *(Note: Standalone files `tests/constitutional-invariants.test.ts` and `tests/destinations-100-catalog.test.ts` do not exist; those checks reside inside `tests/infrastructure-phase03.test.ts` and `tests/server-security-remediation.test.ts`.)* | - No end-to-end HTTP integration tests or database transaction tests exist yet because backend and database implementation belong to Phase 05+. |
+| **Brand, UI/UX Design System, 3D/Vector Badges, Certificate Layout Preview, WCAG 2.2 AA Route Profile, Recharts Security Telemetry UI** | **Implemented as Client-Side React 19 UI Prototype** (`src/App.tsx`, `src/components/**`) | Connected to live backend endpoints in **Phases 07, 09, 12, 13, 16**. |
+| **100 Featured Destinations (`DEST-001` to `DEST-100`, Status: `PROPOSED`)** | **Implemented in Markdown (`docs/06_DESTINATION_CATALOGUE.md`) & Static TypeScript Catalog (`src/data/destinations100Catalog.ts`)** | Relational database seeding in **Phase 05**; field-by-field validation, route geometry & live SAR endpoints in **Phase 09**. |
+| **Pure TypeScript Security, RBAC/COI, 5-Pillar ECF, Anti-Fraud Math, Deep Allowlist Reviewer Firewall & SHA-256 Hash Chain Helpers** | **Implemented as Pure In-Memory TypeScript Functions** (`src/services/securityAndVerificationCore.ts`) | Wired into live Express/HTTP controllers, PostgreSQL transactions, and append-only audit tables in **Phases 05, 06, 11, 12, 16**. |
+| **Constitutional Launch Lock Helper (`enforceConstitutionalEndpointGate` — `BUG-06`)** | **Pure TypeScript Function Matching Only `/api/v1/payments*` and `/api/v1/blockchain*` Prefixes** (returns `{ blocked: true, httpStatus: 403 }`; does not match `/checkout`, `/billing`, `/web3`, `/nft` aliases and is not live HTTP middleware) | Enforced as live server-side HTTP router middleware in **Phase 05 / Phase 17 / Phase 18**. |
+| **Database Schema (80 Schema Groups / 86 Physical Tables), Live Authentication/MFA, Binary Evidence Storage & Live Credential Registry** | **Specification & TypeScript Adapter Interfaces Only** (`docs/08_DATABASE_SCHEMA.md`, `src/adapters/*.ts`) | Implemented in **Phase 05** (DB), **Phase 06** (Auth/MFA), **Phase 11** (Evidence Storage), and **Phase 13** (Credential Registry). |
 
 ---
 
-## 3. Correction of Security Finding `BUG-06` (`enforceConstitutionalEndpointGate`)
+## 4. Exact Command for Founder to Enable Remote GitHub Branch Protection (`AUD-01`)
 
-In `/src/services/securityAndVerificationCore.ts` (lines 1093–1127), `enforceConstitutionalEndpointGate(requestPath: string)` is implemented as follows:
-```ts
-export function enforceConstitutionalEndpointGate(requestPath: string): {
-  readonly blocked: boolean;
-  readonly httpStatus: 200 | 403;
-  readonly errorCode:
-    | null
-    | 'PAYMENT_COLLECTION_DISABLED_BY_CONSTITUTION'
-    | 'BLOCKCHAIN_MODULE_DISABLED_BY_CONSTITUTION';
-} {
-  const normalized = requestPath.trim().toLowerCase();
-  if (
-    normalized.startsWith('/api/v1/payments') &&
-    CONSTITUTIONAL_LOCKS.PAYMENTS_ENABLED === false
-  ) { ... }
-  if (
-    normalized.startsWith('/api/v1/blockchain') &&
-    CONSTITUTIONAL_LOCKS.BLOCKCHAIN_ENABLED === false
-  ) { ... }
-  ...
-}
-```
-**Honest Security Assessment & Limitation of `BUG-06`:**
-1. **Exact Prefix Matching Only:** The function checks **only** whether `normalized.startsWith('/api/v1/payments')` or `normalized.startsWith('/api/v1/blockchain')`. Earlier report text claiming that standalone aliases such as `/checkout`, `/billing`, `/web3`, or `/nft` were matched was inaccurate and has been retracted. Unless a path begins with `/api/v1/payments` (e.g., `/api/v1/payments/checkout`) or `/api/v1/blockchain` (e.g., `/api/v1/blockchain/anchor`), `enforceConstitutionalEndpointGate()` returns `{ blocked: false, httpStatus: 200, errorCode: null }`.
-2. **Pure TypeScript Helper, Not Live HTTP Middleware:** `enforceConstitutionalEndpointGate()` returns a plain TypeScript value object (`{ blocked, httpStatus, errorCode }`). Because Phase 04 has no backend HTTP server or API router, this function is **not** attached to any live network socket or HTTP middleware pipeline. Actual server-side HTTP route interception belongs to the future backend implementation phase (`Phase 05+`).
+Because GitHub requires repository owner (`ranmasrangi-source`) admin authentication to enable branch protection on `https://github.com/ranmasrangi-source/Master-plan-pro`, the Founder can enable it via any of the following three methods:
 
----
-
-## 4. Corrected Remediation Matrix (`BUG-01..12` & `AUD-03..06`)
-
-| ID | Issue Summary | Artifact Type Implemented in Phase 04 | Exact File & Line Locations | Actual Test File & Subtest | Security / Scope Limitations |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **BUG-01** | 21-Role RBAC, Privileged MFA check, Category Accreditation & COI Recusal | Pure TypeScript authorization helper (`authorizeReviewerClaimAndAction`) | `src/services/securityAndVerificationCore.ts` (lines 72–188) | `tests/server-security-remediation.test.ts` (Subtest 1) — **PASS** | Pure function; not yet wired to live HTTP session/auth middleware (Phase 05+). |
-| **BUG-02** | 5-Pillar ECF Scoring, AI Decision Lock, Dual-Senior Co-Signature & Heritage Guardian Check | Pure TypeScript scoring & decision gate functions (`evaluateServerEcfAssessment`, `evaluateVerificationDecisionGate`) | `src/services/securityAndVerificationCore.ts` (lines 194–384) | `tests/server-security-remediation.test.ts` (Subtest 2) — **PASS** | Pure functions; not yet persisted to a relational database (Phase 05+). |
-| **BUG-03** | Evidence Upload Sanitizer (MZ/ELF & XXE string check, 1.0km geozone trim, SHA-256) & Scientific Anti-Fraud Math | Pure TypeScript string/array functions (`sanitizeAndHashEvidenceUpload`, `evaluateScientificAntiFraud`) | `src/services/securityAndVerificationCore.ts` (lines 390–585) | `tests/server-security-remediation.test.ts` (Subtest 3) — **PASS** | Operates on in-memory strings and coordinate arrays; binary multipart stream parsing belongs to Phase 05+. |
-| **BUG-04 & AUD-04** | FIPS 180-4 SHA-256 Audit Chain (`GENESIS_AUDIT_BLOCK_HASH`, `SECURITY_AUDIT_GENESIS_HASH`, payload hash recomputation, tamper detection) & Zero-IP Whistleblower helper | Pure TypeScript SHA-256 chain functions + React UI state | `src/services/securityAndVerificationCore.ts` (lines 591–825); `src/components/security/SecurityIncidentIntelligence.tsx` (lines 55–86, 155–415) | `tests/server-security-remediation.test.ts` (Subtest 4) & `tests/ui-accessibility-i18n-phase04.test.ts` (Subtest 5) — **PASS** | In-memory hash chain verification; append-only PostgreSQL WORM storage belongs to Phase 05+. |
-| **BUG-05 & AUD-05** | Reviewer Firewall Deep Allowlist Projection (`sanitizeCaseForReviewerFirewall`) & Appeal Reviewer Exclusion (`authorizeIndependentAppealDecision`) | Pure TypeScript recursive allowlist projection (`Object.freeze`) + doc clarification that `ReviewerCaseViewDTO` is erased at runtime | `src/services/securityAndVerificationCore.ts` (lines 831–1087); `src/types/verification.ts` (lines 180–191); `README.md` | `tests/server-security-remediation.test.ts` (Subtest 5) — **PASS** | Must be invoked by future backend verification API controllers in Phase 05+ to enforce runtime separation over DB query results. |
-| **BUG-06** | Constitutional Launch Lock Gate (`enforceConstitutionalEndpointGate`) | Pure TypeScript prefix-check function | `src/services/securityAndVerificationCore.ts` (lines 1093–1127) | `tests/server-security-remediation.test.ts` (Subtest 7) — **PASS** | Matches **only** `/api/v1/payments*` and `/api/v1/blockchain*` prefixes; returns a TS object (`httpStatus: 403`), not live HTTP middleware. |
-| **BUG-07** | Role count reconciliation (`21-Role RBAC + MFA Guard`) | Documentation alignment | `docs/07_SYSTEM_ARCHITECTURE.md` (line 32) | `tests/server-security-remediation.test.ts` (Subtest 8) & `tests/infrastructure-phase03.test.ts` (Subtest 3) — **PASS** | None. |
-| **BUG-08** | Database schema table count reconciliation (`80 Numbered Schema Groups / 86 Physical Tables`) | Documentation alignment | `docs/08_DATABASE_SCHEMA.md` (line 4) | `tests/server-security-remediation.test.ts` (Subtest 8) — **PASS** | Schema is a markdown DDL specification; physical SQL tables are deferred to Phase 05+. |
-| **BUG-09** | 100 Featured Destinations runtime catalog (`DEST-001` to `DEST-100`, all `PROPOSED`) | Pure TypeScript catalog array + UI selector | `src/data/destinations100Catalog.ts`; `src/App.tsx` | `tests/server-security-remediation.test.ts` (Subtest 8) & `tests/infrastructure-phase03.test.ts` (Subtest 5) — **PASS** | Static TypeScript catalog; all 100 destinations carry `status: 'PROPOSED'` and `unverified_fields` disclosures. |
-| **BUG-10** | Bikram Sambat (`वि.सं.`) date converter Gregorian & leap-year boundary validation | Pure TypeScript validator & converter (`formatBikramSambatDate`) | `src/i18n/translations.ts` (lines 204–278) | `tests/ui-accessibility-i18n-phase04.test.ts` (Subtest 3) & `tests/server-security-remediation.test.ts` (Subtest 8) — **PASS** | Calendar lookup covers the configured epoch window; returns `isValidDate: false` on invalid dates. |
-| **BUG-11** | Southern/Western hemisphere coordinate formatting (`S`/`W`) & strict typing of `PUBLIC_WEBSITE_42_PAGES` | Pure TypeScript formatter (`formatGeoCoordinates`) & catalog array | `src/data/designSystemCatalog.ts` | `tests/ui-accessibility-i18n-phase04.test.ts` (Subtests 1 & 4) — **PASS** | None. |
-| **BUG-12** | Package manager lockfile standardization (`package-lock.json` + `npm ci`, no `bun.lock`) & Gate 04 status (`AWAITING FOUNDER APPROVAL`) | CI workflow & governance register | `package.json`, `package-lock.json`, `.github/workflows/ci-security-gate.yml`, `docs/23_PHASE_ACCEPTANCE.md` | `tests/server-security-remediation.test.ts` (Subtest 8) & Remote CI Run `43316943828` — **PASS** | None. |
-| **AUD-03** | Public Credential Verification Portal (`lookupCredentialVerificationPortal`) | Pure TypeScript lookup function + React UI state | `src/components/credentials/OfficialCertificateView.tsx` (lines 31–315); `src/App.tsx` (lines 815–860) | `tests/server-security-remediation.test.ts` (Subtest 6) & `tests/ui-accessibility-i18n-phase04.test.ts` (Subtest 6) — **PASS** | Client-side UI lookup: returns `404 NOT_FOUND` for unknown IDs, `400 INVALID_FORMAT` for malformed IDs, and `DESIGN_PREVIEW_ONLY` (`isRealAchievement: false`) for fixture `0TO8848-CRED-2026-000108`. Live DB-backed credential registry deferred to Phase 09+. |
-| **AUD-06** | Dependency vulnerability audit (`npm audit --audit-level=low`) in CI | CI workflow step & npm script | `package.json` (line 15); `.github/workflows/ci-security-gate.yml` (lines 36–37) | `tests/server-security-remediation.test.ts` (Subtest 8) & Remote CI Run `43316943828` Step 7 — **PASS** | Audits npm dependency tree against GitHub Advisory Database (`0 vulnerabilities`). |
+1. **Method A — Run the repository script locally with a GitHub Admin PAT:**
+   ```bash
+   GITHUB_ADMIN_TOKEN="<YOUR_GITHUB_PAT_WITH_REPO_ADMIN>" npm run security:branch-protection -- --apply
+   ```
+2. **Method B — GitHub CLI (`gh`):**
+   ```bash
+   gh api --method PUT /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection \
+     --input - << 'EOF'
+   {
+     "required_status_checks": {
+       "strict": true,
+       "contexts": ["Secret Scan, Type Check, Test Suite & Build Integrity"]
+     },
+     "enforce_admins": true,
+     "required_pull_request_reviews": {
+       "dismiss_stale_reviews": true,
+       "require_code_owner_reviews": false,
+       "required_approving_review_count": 1
+     },
+     "restrictions": null,
+     "required_linear_history": true,
+     "allow_force_pushes": false,
+     "allow_deletions": false,
+     "block_creations": false,
+     "required_conversation_resolution": true
+   }
+   EOF
+   ```
+3. **Method C — Automatic via GitHub Actions Secret:**
+   Add a repository secret named `BRANCH_PROTECTION_ADMIN_TOKEN` (Fine-Grained PAT with `Administration: Read and write` permission) in `Settings -> Secrets and variables -> Actions`. Step 6 of `.github/workflows/ci-security-gate.yml` will automatically apply the branch protection policy on the next workflow run.
 
 ---
 
-## 5. Local Verification & Test Execution Evidence
-
-Executed directly in `/app/applet`:
-- **`npm run security:scan` (`tsx scripts/security-scan.ts`):** Scanned `59` repository files; `Constitutional Locks Verified: true`; `0 secret leaks, 0 constitutional violations` (Exit code `0`).
-- **`npm run security:audit` (`npm audit --audit-level=low`):** `found 0 vulnerabilities` (Exit code `0`).
-- **`npm run lint` (`tsc --noEmit`):** `0` TypeScript errors (Exit code `0`).
-- **`npm test` (`node --import tsx --test tests/*.test.ts`):**
-  - Suite 1: `tests/infrastructure-phase03.test.ts` — `5 / 5` subtests passed (`0` failed).
-  - Suite 2: `tests/server-security-remediation.test.ts` — `8 / 8` subtests passed (`0` failed).
-  - Suite 3: `tests/ui-accessibility-i18n-phase04.test.ts` — `6 / 6` subtests passed (`0` failed).
-  - **Total: `19` tests across `3` suites — `19 pass`, `0 fail`**.
-- **`npm run build` (`vite build`):** Transformed `400` modules (`dist/index.html` `1.70 kB`, `dist/assets/index-3O9QcuYE.css` `28.82 kB`, `dist/assets/index-BCcX2Gx8.js` `1,060.20 kB`) (Exit code `0`).
-
----
-
-## 6. Final Gate Rule
+## 5. Final Gate Rule
 
 - **Gate 04 Status:** `AWAITING FOUNDER APPROVAL`
-- **Phase 05 Status:** `BLOCKED / NOT STARTED`
-- Phase 05 remains strictly blocked until the Founder independently reviews this corrected evidence and provides explicit written Gate 04 approval.
+- **Phase 05 Status:** `NOT STARTED (BLOCKED)`
+- Phase 05 remains strictly blocked until the Founder reviews this report and provides explicit written Gate 04 approval.
