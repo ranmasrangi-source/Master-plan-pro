@@ -21,6 +21,7 @@ import {
   AppealCaseRecord,
   EcfPathwayClassification,
   EvidenceConfidenceAssessment,
+  EvidenceFileRecord,
   EvidencePillarId,
   ForensicAnomalyFlag,
   ReviewerCaseViewDTO,
@@ -584,11 +585,16 @@ export function evaluateScientificAntiFraud(params: {
 }
 
 // ============================================================================
-// BUG-04: CRYPTOGRAPHIC SHA-256 AUDIT CHAIN & ZERO-IP WHISTLEBLOWER VAULT
+// BUG-04 & AUD-04: CRYPTOGRAPHIC SHA-256 AUDIT CHAIN & ZERO-IP WHISTLEBLOWER
 // ============================================================================
+
+export const GENESIS_AUDIT_BLOCK_HASH: string = computeSha256Hex(
+  '0TO8848_GENESIS_AUDIT_BLOCK_V1_1'
+);
 
 export interface CryptographicAuditRecord {
   readonly auditId: string;
+  readonly sequenceNumber?: number;
   readonly actorUserId: string;
   readonly actorRole: PlatformRole;
   readonly departmentId: GovernanceDepartmentId;
@@ -599,18 +605,13 @@ export interface CryptographicAuditRecord {
   readonly currentAuditHash: string;
 }
 
-export function appendCryptographicAuditRecord(
-  chain: ReadonlyArray<CryptographicAuditRecord>,
-  entry: Omit<CryptographicAuditRecord, 'prevAuditHash' | 'currentAuditHash'>
-): ReadonlyArray<CryptographicAuditRecord> {
-  const prevAuditHash =
-    chain.length === 0
-      ? computeSha256Hex('0TO8848_GENESIS_AUDIT_BLOCK_V1_1')
-      : chain[chain.length - 1].currentAuditHash;
-
+export function computeCanonicalAuditRecordHash(
+  entry: Omit<CryptographicAuditRecord, 'currentAuditHash'>
+): string {
   const canonicalPayload = [
-    prevAuditHash,
+    entry.prevAuditHash,
     entry.auditId,
+    entry.sequenceNumber !== undefined ? String(entry.sequenceNumber) : '',
     entry.actorUserId,
     entry.actorRole,
     entry.departmentId,
@@ -619,47 +620,152 @@ export function appendCryptographicAuditRecord(
     entry.timestampIso,
   ].join('|');
 
-  const currentAuditHash = computeSha256Hex(canonicalPayload);
+  return computeSha256Hex(canonicalPayload);
+}
+
+export function appendCryptographicAuditRecord(
+  chain: ReadonlyArray<CryptographicAuditRecord>,
+  entry: Omit<CryptographicAuditRecord, 'prevAuditHash' | 'currentAuditHash'>
+): ReadonlyArray<CryptographicAuditRecord> {
+  const prevAuditHash =
+    chain.length === 0
+      ? GENESIS_AUDIT_BLOCK_HASH
+      : chain[chain.length - 1].currentAuditHash;
+
+  const sequenceNumber =
+    entry.sequenceNumber !== undefined
+      ? entry.sequenceNumber
+      : chain.length === 0
+      ? 1
+      : (chain[chain.length - 1].sequenceNumber ?? chain.length) + 1;
+
+  const recordWithoutCurrentHash: Omit<CryptographicAuditRecord, 'currentAuditHash'> = {
+    ...entry,
+    sequenceNumber,
+    prevAuditHash,
+  };
+
+  const currentAuditHash = computeCanonicalAuditRecordHash(recordWithoutCurrentHash);
 
   return [
     ...chain,
-    {
-      ...entry,
-      prevAuditHash,
+    Object.freeze({
+      ...recordWithoutCurrentHash,
       currentAuditHash,
-    },
+    }),
   ];
+}
+
+export interface AuditChainVerificationReport {
+  readonly intact: boolean;
+  readonly verifiedCount: number;
+  readonly failureReason:
+    | null
+    | 'EMPTY_CHAIN'
+    | 'GENESIS_HASH_MISMATCH'
+    | 'SEQUENCE_GAP_OR_REORDER'
+    | 'DUPLICATE_AUDIT_ID'
+    | 'PREV_HASH_LINK_BROKEN'
+    | 'PAYLOAD_TAMPERED_HASH_MISMATCH';
+  readonly failedAuditId: string | null;
+}
+
+export function verifyCryptographicAuditChainDetailed(
+  chain: ReadonlyArray<CryptographicAuditRecord>
+): AuditChainVerificationReport {
+  if (chain.length === 0) {
+    return {
+      intact: false,
+      verifiedCount: 0,
+      failureReason: 'EMPTY_CHAIN',
+      failedAuditId: null,
+    };
+  }
+
+  const seenAuditIds = new Set<string>();
+
+  for (let i = 0; i < chain.length; i++) {
+    const rec = chain[i];
+
+    if (seenAuditIds.has(rec.auditId)) {
+      return {
+        intact: false,
+        verifiedCount: i,
+        failureReason: 'DUPLICATE_AUDIT_ID',
+        failedAuditId: rec.auditId,
+      };
+    }
+    seenAuditIds.add(rec.auditId);
+
+    // 1. Verify Genesis or Previous Hash Link
+    if (i === 0) {
+      if (rec.prevAuditHash !== GENESIS_AUDIT_BLOCK_HASH) {
+        return {
+          intact: false,
+          verifiedCount: 0,
+          failureReason: 'GENESIS_HASH_MISMATCH',
+          failedAuditId: rec.auditId,
+        };
+      }
+    } else {
+      if (rec.prevAuditHash !== chain[i - 1].currentAuditHash) {
+        return {
+          intact: false,
+          verifiedCount: i,
+          failureReason: 'PREV_HASH_LINK_BROKEN',
+          failedAuditId: rec.auditId,
+        };
+      }
+    }
+
+    // 2. Verify Monotonic Sequence Continuity
+    if (rec.sequenceNumber !== undefined) {
+      const expectedSeq =
+        i === 0
+          ? rec.sequenceNumber
+          : (chain[i - 1].sequenceNumber ?? i) + 1;
+      if (i === 0 && rec.sequenceNumber < 1) {
+        return {
+          intact: false,
+          verifiedCount: i,
+          failureReason: 'SEQUENCE_GAP_OR_REORDER',
+          failedAuditId: rec.auditId,
+        };
+      }
+      if (i > 0 && rec.sequenceNumber !== expectedSeq) {
+        return {
+          intact: false,
+          verifiedCount: i,
+          failureReason: 'SEQUENCE_GAP_OR_REORDER',
+          failedAuditId: rec.auditId,
+        };
+      }
+    }
+
+    // 3. Recompute Current Hash from Canonical Payload
+    const expectedCurrent = computeCanonicalAuditRecordHash(rec);
+    if (rec.currentAuditHash !== expectedCurrent) {
+      return {
+        intact: false,
+        verifiedCount: i,
+        failureReason: 'PAYLOAD_TAMPERED_HASH_MISMATCH',
+        failedAuditId: rec.auditId,
+      };
+    }
+  }
+
+  return {
+    intact: true,
+    verifiedCount: chain.length,
+    failureReason: null,
+    failedAuditId: null,
+  };
 }
 
 export function verifyCryptographicAuditChain(
   chain: ReadonlyArray<CryptographicAuditRecord>
 ): boolean {
-  for (let i = 0; i < chain.length; i++) {
-    const rec = chain[i];
-    const expectedPrev =
-      i === 0
-        ? computeSha256Hex('0TO8848_GENESIS_AUDIT_BLOCK_V1_1')
-        : chain[i - 1].currentAuditHash;
-    if (rec.prevAuditHash !== expectedPrev) {
-      return false;
-    }
-    const expectedCurrent = computeSha256Hex(
-      [
-        rec.prevAuditHash,
-        rec.auditId,
-        rec.actorUserId,
-        rec.actorRole,
-        rec.departmentId,
-        rec.action,
-        rec.targetEntityId,
-        rec.timestampIso,
-      ].join('|')
-    );
-    if (rec.currentAuditHash !== expectedCurrent) {
-      return false;
-    }
-  }
-  return true;
+  return verifyCryptographicAuditChainDetailed(chain).intact;
 }
 
 export function createZeroIpWhistleblowerReport(params: {
@@ -684,38 +790,263 @@ export function createZeroIpWhistleblowerReport(params: {
 }
 
 // ============================================================================
-// BUG-05: RUNTIME BUSINESS INDEPENDENCE FIREWALL & INDEPENDENT APPEALS GUARD
+// BUG-05 & AUD-05: EXPLICIT ALLOWLIST REVIEWER FIREWALL & APPEALS GUARD
 // ============================================================================
 
-const FORBIDDEN_COMMERCIAL_KEYS: ReadonlyArray<string> = [
-  'sponsorId',
-  'sponsorCampaignId',
-  'subscriptionTier',
-  'paidMemberStatus',
-  'lifetimeSpendUsd',
-  'marketplaceBookingId',
-  'priorityQueuePaid',
-];
+export const ALLOWED_REVIEWER_CASE_DTO_KEYS: ReadonlySet<keyof ReviewerCaseViewDTO> = new Set<
+  keyof ReviewerCaseViewDTO
+>([
+  'caseId',
+  'applicationId',
+  'categoryId',
+  'achievementId',
+  'destinationId',
+  'routeId',
+  'attemptStartDateIso',
+  'attemptCompletionDateIso',
+  'dateCalendarSystem',
+  'originalBikramSambatDate',
+  'supplementalOxygenUsed',
+  'lntSelfScore',
+  'requiredReviewerTier',
+  'requiresDualSenior',
+  'requiresHeritageGuardian',
+  'evidenceFiles',
+  'ecfAssessment',
+  'antiFraudReport',
+  'status',
+  'policyVersion',
+]);
 
+export const ALLOWED_EVIDENCE_FILE_KEYS: ReadonlySet<keyof EvidenceFileRecord> = new Set<
+  keyof EvidenceFileRecord
+>([
+  'evidenceId',
+  'applicationId',
+  'uploaderUserId',
+  'pillar',
+  'fileType',
+  'storageUri',
+  'sizeBytes',
+  'sha256Hex',
+  'pHash64Hex',
+  'pHashMirror64Hex',
+  'exifPresent',
+  'residentialGeozoneMasked',
+  'rawBinaryDeletedPostApproval',
+  'uploadedAt',
+]);
+
+export const ALLOWED_ECF_ASSESSMENT_KEYS: ReadonlySet<keyof EvidenceConfidenceAssessment> =
+  new Set<keyof EvidenceConfidenceAssessment>([
+    'assessmentId',
+    'applicationId',
+    'pil01VisualScore',
+    'pil02TelemetryScore',
+    'pil03DocumentaryScore',
+    'pil04WitnessScore',
+    'pil05ChronologyScore',
+    'totalConfidenceScore',
+    'requiredThreshold',
+    'strippedExifPenaltyApplied',
+    'isGpsOnlyBlocked',
+    'eligibleForApproval',
+    'pathwayClassification',
+    'policyVersion',
+    'computedAt',
+  ]);
+
+export const ALLOWED_ANTI_FRAUD_REPORT_KEYS: ReadonlySet<keyof ScientificAntiFraudReport> =
+  new Set<keyof ScientificAntiFraudReport>([
+    'investigationId',
+    'applicationId',
+    'demDatasetUsed',
+    'demRmseMeters',
+    'maxObservedAscentRateMPerHr',
+    'westPhysiologicalCeilingMPerHr',
+    'minPHashHammingDistanceBits',
+    'matchedHistoricalEvidenceId',
+    'flags',
+    'investigationPriorityScore',
+    'computedAt',
+  ]);
+
+function collectUnallowedKeyPaths(
+  obj: unknown,
+  allowedKeys: ReadonlySet<string>,
+  prefix: string,
+  acc: string[]
+): void {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return;
+  }
+  for (const key of Object.keys(obj as Record<string, unknown>)) {
+    const fullPath = prefix ? `${prefix}.${key}` : key;
+    if (!allowedKeys.has(key)) {
+      acc.push(fullPath);
+    }
+  }
+}
+
+/**
+ * AUD-05: Strict Deep Allowlist Projection for ReviewerCaseViewDTO.
+ * Rather than relying on a shallow denylist, this function constructs a brand-new,
+ * deeply frozen ReviewerCaseViewDTO containing ONLY the explicitly allowlisted fields
+ * at the top level and inside `evidenceFiles[]`, `ecfAssessment`, and `antiFraudReport`.
+ * Any top-level or nested sponsor, advertiser, subscription, billing, or unknown property
+ * is rejected by construction and reported in `strippedFieldPaths`.
+ */
 export function sanitizeCaseForReviewerFirewall(
   rawPayload: Record<string, unknown> & ReviewerCaseViewDTO
 ): {
   readonly sanitizedDto: ReviewerCaseViewDTO;
   readonly strippedCommercialFieldsCount: number;
+  readonly strippedFieldPaths: readonly string[];
 } {
-  const clone: Record<string, unknown> = { ...rawPayload };
-  let strippedCommercialFieldsCount = 0;
+  const strippedFieldPaths: string[] = [];
 
-  for (const key of FORBIDDEN_COMMERCIAL_KEYS) {
-    if (key in clone) {
-      delete clone[key];
-      strippedCommercialFieldsCount += 1;
-    }
-  }
+  // 1. Detect unallowed top-level keys
+  collectUnallowedKeyPaths(
+    rawPayload,
+    ALLOWED_REVIEWER_CASE_DTO_KEYS as ReadonlySet<string>,
+    '',
+    strippedFieldPaths
+  );
+
+  // 2. Project nested evidenceFiles[] via strict allowlist
+  const rawEvidenceArray = Array.isArray(rawPayload.evidenceFiles)
+    ? rawPayload.evidenceFiles
+    : [];
+  const projectedEvidenceFiles: EvidenceFileRecord[] = rawEvidenceArray.map((ev, idx) => {
+    collectUnallowedKeyPaths(
+      ev,
+      ALLOWED_EVIDENCE_FILE_KEYS as ReadonlySet<string>,
+      `evidenceFiles[${idx}]`,
+      strippedFieldPaths
+    );
+    return Object.freeze({
+      evidenceId: String(ev.evidenceId),
+      applicationId: String(ev.applicationId),
+      uploaderUserId: String(ev.uploaderUserId),
+      pillar: ev.pillar,
+      fileType: ev.fileType,
+      storageUri: String(ev.storageUri),
+      sizeBytes: Number(ev.sizeBytes),
+      sha256Hex: String(ev.sha256Hex),
+      pHash64Hex: ev.pHash64Hex !== null && ev.pHash64Hex !== undefined ? String(ev.pHash64Hex) : null,
+      pHashMirror64Hex:
+        ev.pHashMirror64Hex !== null && ev.pHashMirror64Hex !== undefined
+          ? String(ev.pHashMirror64Hex)
+          : null,
+      exifPresent: Boolean(ev.exifPresent),
+      residentialGeozoneMasked: Boolean(ev.residentialGeozoneMasked),
+      rawBinaryDeletedPostApproval: Boolean(ev.rawBinaryDeletedPostApproval),
+      uploadedAt: String(ev.uploadedAt),
+    });
+  });
+
+  // 3. Project nested ecfAssessment via strict allowlist
+  const rawEcf = rawPayload.ecfAssessment;
+  collectUnallowedKeyPaths(
+    rawEcf,
+    ALLOWED_ECF_ASSESSMENT_KEYS as ReadonlySet<string>,
+    'ecfAssessment',
+    strippedFieldPaths
+  );
+  const projectedEcf: EvidenceConfidenceAssessment = Object.freeze({
+    assessmentId: String(rawEcf.assessmentId),
+    applicationId: String(rawEcf.applicationId),
+    pil01VisualScore: Number(rawEcf.pil01VisualScore),
+    pil02TelemetryScore: Number(rawEcf.pil02TelemetryScore),
+    pil03DocumentaryScore: Number(rawEcf.pil03DocumentaryScore),
+    pil04WitnessScore: Number(rawEcf.pil04WitnessScore),
+    pil05ChronologyScore: Number(rawEcf.pil05ChronologyScore),
+    totalConfidenceScore: Number(rawEcf.totalConfidenceScore),
+    requiredThreshold: Number(rawEcf.requiredThreshold),
+    strippedExifPenaltyApplied: 0,
+    isGpsOnlyBlocked: Boolean(rawEcf.isGpsOnlyBlocked),
+    eligibleForApproval: Boolean(rawEcf.eligibleForApproval),
+    pathwayClassification: rawEcf.pathwayClassification,
+    policyVersion: String(rawEcf.policyVersion),
+    computedAt: String(rawEcf.computedAt),
+  });
+
+  // 4. Project nested antiFraudReport via strict allowlist
+  const rawFraud = rawPayload.antiFraudReport;
+  collectUnallowedKeyPaths(
+    rawFraud,
+    ALLOWED_ANTI_FRAUD_REPORT_KEYS as ReadonlySet<string>,
+    'antiFraudReport',
+    strippedFieldPaths
+  );
+  const projectedFlags: readonly ForensicAnomalyFlag[] = Object.freeze(
+    Array.isArray(rawFraud.flags) ? [...rawFraud.flags] : []
+  );
+  const projectedFraud: ScientificAntiFraudReport = Object.freeze({
+    investigationId: String(rawFraud.investigationId),
+    applicationId: String(rawFraud.applicationId),
+    demDatasetUsed: rawFraud.demDatasetUsed,
+    demRmseMeters:
+      rawFraud.demRmseMeters !== null && rawFraud.demRmseMeters !== undefined
+        ? Number(rawFraud.demRmseMeters)
+        : null,
+    maxObservedAscentRateMPerHr:
+      rawFraud.maxObservedAscentRateMPerHr !== null &&
+      rawFraud.maxObservedAscentRateMPerHr !== undefined
+        ? Number(rawFraud.maxObservedAscentRateMPerHr)
+        : null,
+    westPhysiologicalCeilingMPerHr:
+      rawFraud.westPhysiologicalCeilingMPerHr !== null &&
+      rawFraud.westPhysiologicalCeilingMPerHr !== undefined
+        ? Number(rawFraud.westPhysiologicalCeilingMPerHr)
+        : null,
+    minPHashHammingDistanceBits:
+      rawFraud.minPHashHammingDistanceBits !== null &&
+      rawFraud.minPHashHammingDistanceBits !== undefined
+        ? Number(rawFraud.minPHashHammingDistanceBits)
+        : null,
+    matchedHistoricalEvidenceId:
+      rawFraud.matchedHistoricalEvidenceId !== null &&
+      rawFraud.matchedHistoricalEvidenceId !== undefined
+        ? String(rawFraud.matchedHistoricalEvidenceId)
+        : null,
+    flags: projectedFlags,
+    investigationPriorityScore: Number(rawFraud.investigationPriorityScore),
+    computedAt: String(rawFraud.computedAt),
+  });
+
+  // 5. Construct deeply frozen allowlisted ReviewerCaseViewDTO
+  const sanitizedDto: ReviewerCaseViewDTO = Object.freeze({
+    caseId: String(rawPayload.caseId),
+    applicationId: String(rawPayload.applicationId),
+    categoryId: rawPayload.categoryId,
+    achievementId: String(rawPayload.achievementId),
+    destinationId: String(rawPayload.destinationId),
+    routeId: String(rawPayload.routeId),
+    attemptStartDateIso: String(rawPayload.attemptStartDateIso),
+    attemptCompletionDateIso: String(rawPayload.attemptCompletionDateIso),
+    dateCalendarSystem: rawPayload.dateCalendarSystem,
+    originalBikramSambatDate:
+      rawPayload.originalBikramSambatDate !== null &&
+      rawPayload.originalBikramSambatDate !== undefined
+        ? String(rawPayload.originalBikramSambatDate)
+        : null,
+    supplementalOxygenUsed: Boolean(rawPayload.supplementalOxygenUsed),
+    lntSelfScore: Number(rawPayload.lntSelfScore),
+    requiredReviewerTier: rawPayload.requiredReviewerTier,
+    requiresDualSenior: Boolean(rawPayload.requiresDualSenior),
+    requiresHeritageGuardian: Boolean(rawPayload.requiresHeritageGuardian),
+    evidenceFiles: Object.freeze(projectedEvidenceFiles),
+    ecfAssessment: projectedEcf,
+    antiFraudReport: projectedFraud,
+    status: rawPayload.status,
+    policyVersion: String(rawPayload.policyVersion),
+  });
 
   return {
-    sanitizedDto: clone as unknown as ReviewerCaseViewDTO,
-    strippedCommercialFieldsCount,
+    sanitizedDto,
+    strippedCommercialFieldsCount: strippedFieldPaths.length,
+    strippedFieldPaths: Object.freeze(strippedFieldPaths),
   };
 }
 

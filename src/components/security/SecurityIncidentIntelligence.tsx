@@ -40,6 +40,7 @@ export type SecurityTriggerCode =
 
 export interface SecurityAuditLogEntry {
   readonly eventId: string;
+  readonly sequenceNumber: number;
   readonly timestampIso: string;
   readonly timeBucketLabel: string;
   readonly triggerCode: SecurityTriggerCode;
@@ -51,6 +52,37 @@ export interface SecurityAuditLogEntry {
   readonly prevAuditHash: string;
   readonly currentEventHash: string;
   readonly status: 'CONTAINED' | 'QUEUED_FOR_HUMAN_AUDIT' | 'VERIFIED_IMMUTABLE';
+}
+
+export const SECURITY_AUDIT_GENESIS_HASH: string = computeSha256Hex(
+  '0TO8848_SECURITY_AUDIT_GENESIS_BLOCK_V1_1'
+);
+
+export const SECURITY_AUDIT_GENESIS_SEQUENCE = 934;
+
+/**
+ * AUD-04: Recomputes the FIPS 180-4 SHA-256 digest from the canonical event payload.
+ * Any modification to summary, severity, targetResourceId, status, timestamp, sequence,
+ * or prevAuditHash produces a completely different 256-bit digest.
+ */
+export function computeSecurityAuditEventPayloadHash(
+  entry: Omit<SecurityAuditLogEntry, 'currentEventHash'>
+): string {
+  const canonicalPayload = [
+    entry.prevAuditHash,
+    entry.eventId,
+    String(entry.sequenceNumber),
+    entry.timestampIso,
+    entry.timeBucketLabel,
+    entry.triggerCode,
+    entry.severity,
+    entry.departmentId,
+    entry.targetResourceId,
+    entry.summary,
+    entry.forensicMetricLabel,
+    entry.status,
+  ].join('|');
+  return computeSha256Hex(canonicalPayload);
 }
 
 export interface SecurityTimeSeriesPoint {
@@ -120,114 +152,22 @@ export const INITIAL_SECURITY_TIME_SERIES: ReadonlyArray<SecurityTimeSeriesPoint
   },
 ];
 
-export const INITIAL_SECURITY_AUDIT_LOGS: ReadonlyArray<SecurityAuditLogEntry> = [
+interface RawSeedAuditPayload {
+  readonly sequenceNumber: number;
+  readonly timestampIso: string;
+  readonly timeBucketLabel: string;
+  readonly triggerCode: SecurityTriggerCode;
+  readonly severity: SecurityEventSeverity;
+  readonly departmentId: GovernanceDepartmentId;
+  readonly targetResourceId: string;
+  readonly summary: string;
+  readonly forensicMetricLabel: string;
+  readonly status: 'CONTAINED' | 'QUEUED_FOR_HUMAN_AUDIT' | 'VERIFIED_IMMUTABLE';
+}
+
+const CHRONOLOGICAL_SEED_AUDIT_PAYLOADS: ReadonlyArray<RawSeedAuditPayload> = [
   {
-    eventId: 'SEC-AUD-2026-0941',
-    timestampIso: '2026-11-12T10:42:18Z',
-    timeBucketLabel: '24:00 UTC',
-    triggerCode: ForensicAnomalyFlag.SYNTHETIC_DEM_CLAMP_FLAG,
-    severity: 'CRITICAL',
-    departmentId: GovernanceDepartmentId.DEPT_05_SECURITY,
-    targetResourceId: 'APP-2026-8841 (DEST-001)',
-    summary:
-      'Synthetic GPX elevation track detected: Copernicus GLO-30 DEM RMSE = 0.14m (< 0.30m artificial clamp threshold over 820 trackpoints). Routed to Human Anti-Fraud Investigator.',
-    forensicMetricLabel: 'E_RMSE = 0.14m (< 0.3m threshold)',
-    prevAuditHash: '4a7d1ed414474e4033ac29ccb8653d9b00000000000000000000000000000940',
-    currentEventHash: '8f3e2a19c7b6d54e3210fedcba9876543210abcdef1234567890abcdef000941',
-    status: 'QUEUED_FOR_HUMAN_AUDIT',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0940',
-    timestampIso: '2026-11-12T10:38:04Z',
-    timeBucketLabel: '24:00 UTC',
-    triggerCode: 'COMMERCIAL_FIREWALL_BLOCK',
-    severity: 'HIGH',
-    departmentId: GovernanceDepartmentId.DEPT_11_INTERNAL_AUDIT,
-    targetResourceId: 'CASE-2026-4410 (Reviewer DTO)',
-    summary:
-      'System #12 Business Independence Firewall stripped commercial sponsor metadata before rendering ReviewerCaseViewDTO. Zero commercial fields exposed to verification reviewer.',
-    forensicMetricLabel: 'ForbiddenCommercialFields = 0 leaked',
-    prevAuditHash: '2c9b8a77f6e5d4c3b2a1908f7e6d5c4b3a29182736455463728190abcdef0939',
-    currentEventHash: '4a7d1ed414474e4033ac29ccb8653d9b00000000000000000000000000000940',
-    status: 'CONTAINED',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0939',
-    timestampIso: '2026-11-12T10:31:52Z',
-    timeBucketLabel: '20:00 UTC',
-    triggerCode: ForensicAnomalyFlag.HIGH_VISUAL_DUPLICATE_FLAG,
-    severity: 'HIGH',
-    departmentId: GovernanceDepartmentId.DEPT_05_SECURITY,
-    targetResourceId: 'EVID-2026-7719 (DEST-003 Kangchenjunga)',
-    summary:
-      '64-bit DCT perceptual hash (pHash) matched historical summit photograph EVID-2025-1102 with Hamming distance D_H = 4 bits (<= 6 bit duplicate threshold). Flagged for Senior Reviewer comparison.',
-    forensicMetricLabel: '64-bit DCT pHash D_H = 4 bits',
-    prevAuditHash: '9b1d4c3e2f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a0938',
-    currentEventHash: '2c9b8a77f6e5d4c3b2a1908f7e6d5c4b3a29182736455463728190abcdef0939',
-    status: 'QUEUED_FOR_HUMAN_AUDIT',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0938',
-    timestampIso: '2026-11-12T10:25:10Z',
-    timeBucketLabel: '20:00 UTC',
-    triggerCode: ForensicAnomalyFlag.KINEMATIC_PHYSIOLOGICAL_EXCEEDANCE,
-    severity: 'ELEVATED',
-    departmentId: GovernanceDepartmentId.DEPT_03_VERIFICATION,
-    targetResourceId: 'APP-2026-8819 (DEST-004 Lhotse)',
-    summary:
-      'Observed vertical ascent rate (690 m/hr at 7,900m) exceeded West VO2max High-Altitude physiological ceiling (345 m/hr). Mechanical assist / helicopter segment check triggered.',
-    forensicMetricLabel: 'V_obs = 690 m/hr > V_max = 345 m/hr',
-    prevAuditHash: '1f2e3d4c5b6a798897a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c60937',
-    currentEventHash: '9b1d4c3e2f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a0938',
-    status: 'QUEUED_FOR_HUMAN_AUDIT',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0937',
-    timestampIso: '2026-11-12T10:19:45Z',
-    timeBucketLabel: '16:00 UTC',
-    triggerCode: 'GPS_ONLY_SUBMISSION_HOLD',
-    severity: 'ELEVATED',
-    departmentId: GovernanceDepartmentId.DEPT_03_VERIFICATION,
-    targetResourceId: 'APP-2026-8795 (DEST-041 Mont Blanc)',
-    summary:
-      'Amendment A3 Constitutional Rule enforced: Submission contained GPX telemetry only (PIL-02 = 30 pts, PIL-05 = 10 pts -> Total 40/160 < 75). Automatically held for corroborating evidence.',
-    forensicMetricLabel: 'ECF Score = 40 / 160 pts (Blocked)',
-    prevAuditHash: '7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b0936',
-    currentEventHash: '1f2e3d4c5b6a798897a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c60937',
-    status: 'CONTAINED',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0936',
-    timestampIso: '2026-11-12T10:12:00Z',
-    timeBucketLabel: '16:00 UTC',
-    triggerCode: 'DUAL_SENIOR_ECF_OVERRIDE',
-    severity: 'INFO',
-    departmentId: GovernanceDepartmentId.DEPT_03_VERIFICATION,
-    targetResourceId: 'OVR-2026-0041 (DEST-009 Nanga Parbat)',
-    summary:
-      'Dual Senior Reviewer Override (2x L4 + Verification Dept Lead) cryptographically co-signed for sub-threshold legacy expedition with official alpine club dossier.',
-    forensicMetricLabel: '2x L4 + Dept-03 Lead Co-Signed',
-    prevAuditHash: '5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f0935',
-    currentEventHash: '7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b0936',
-    status: 'VERIFIED_IMMUTABLE',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0935',
-    timestampIso: '2026-11-12T10:04:33Z',
-    timeBucketLabel: '12:00 UTC',
-    triggerCode: 'RBAC_SELF_APPROVAL_BLOCKED',
-    severity: 'CRITICAL',
-    departmentId: GovernanceDepartmentId.DEPT_04_APPEAL_REVIEW,
-    targetResourceId: 'USR-REV-0082 -> APP-2026-8750',
-    summary:
-      'Separation-of-Duties guard blocked reviewer USR-REV-0082 from accessing verification queue for an expedition where they were listed as a rope-team member.',
-    forensicMetricLabel: 'COI Recusal Rule Enforced',
-    prevAuditHash: '0000000000000000000000000000000000000000000000000000000000000934',
-    currentEventHash: '5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f0935',
-    status: 'CONTAINED',
-  },
-  {
-    eventId: 'SEC-AUD-2026-0934',
+    sequenceNumber: 934,
     timestampIso: '2026-11-12T09:55:19Z',
     timeBucketLabel: '12:00 UTC',
     triggerCode: 'NEPAL_ENCLAVE_SYNC_VERIFIED',
@@ -237,11 +177,138 @@ export const INITIAL_SECURITY_AUDIT_LOGS: ReadonlyArray<SecurityAuditLogEntry> =
     summary:
       'Nepal Data Protection Act (Individual Privacy Act 2075 BS) citizen PII field-level AES-256-GCM cipher envelope verified prior to global edge replication.',
     forensicMetricLabel: 'AES-256-GCM Envelope Verified',
-    prevAuditHash: 'GENESIS_HASH_0TO8848_AUDIT_CHAIN_V1_1_00000000000000000000000000',
-    currentEventHash: '0000000000000000000000000000000000000000000000000000000000000934',
     status: 'VERIFIED_IMMUTABLE',
   },
+  {
+    sequenceNumber: 935,
+    timestampIso: '2026-11-12T10:04:33Z',
+    timeBucketLabel: '12:00 UTC',
+    triggerCode: 'RBAC_SELF_APPROVAL_BLOCKED',
+    severity: 'CRITICAL',
+    departmentId: GovernanceDepartmentId.DEPT_04_APPEAL_REVIEW,
+    targetResourceId: 'USR-REV-0082 -> APP-2026-8750',
+    summary:
+      'Separation-of-Duties guard blocked reviewer USR-REV-0082 from accessing verification queue for an expedition where they were listed as a rope-team member.',
+    forensicMetricLabel: 'COI Recusal Rule Enforced',
+    status: 'CONTAINED',
+  },
+  {
+    sequenceNumber: 936,
+    timestampIso: '2026-11-12T10:12:00Z',
+    timeBucketLabel: '16:00 UTC',
+    triggerCode: 'DUAL_SENIOR_ECF_OVERRIDE',
+    severity: 'INFO',
+    departmentId: GovernanceDepartmentId.DEPT_03_VERIFICATION,
+    targetResourceId: 'OVR-2026-0041 (DEST-009 Nanga Parbat)',
+    summary:
+      'Dual Senior Reviewer Override (2x L4 + Verification Dept Lead) cryptographically co-signed for sub-threshold legacy expedition with official alpine club dossier.',
+    forensicMetricLabel: '2x L4 + Dept-03 Lead Co-Signed',
+    status: 'VERIFIED_IMMUTABLE',
+  },
+  {
+    sequenceNumber: 937,
+    timestampIso: '2026-11-12T10:19:45Z',
+    timeBucketLabel: '16:00 UTC',
+    triggerCode: 'GPS_ONLY_SUBMISSION_HOLD',
+    severity: 'ELEVATED',
+    departmentId: GovernanceDepartmentId.DEPT_03_VERIFICATION,
+    targetResourceId: 'APP-2026-8795 (DEST-041 Mont Blanc)',
+    summary:
+      'Amendment A3 Constitutional Rule enforced: Submission contained GPX telemetry only (PIL-02 = 30 pts, PIL-05 = 10 pts -> Total 40/160 < 75). Automatically held for corroborating evidence.',
+    forensicMetricLabel: 'ECF Score = 40 / 160 pts (Blocked)',
+    status: 'CONTAINED',
+  },
+  {
+    sequenceNumber: 938,
+    timestampIso: '2026-11-12T10:25:10Z',
+    timeBucketLabel: '20:00 UTC',
+    triggerCode: ForensicAnomalyFlag.KINEMATIC_PHYSIOLOGICAL_EXCEEDANCE,
+    severity: 'ELEVATED',
+    departmentId: GovernanceDepartmentId.DEPT_03_VERIFICATION,
+    targetResourceId: 'APP-2026-8819 (DEST-004 Lhotse)',
+    summary:
+      'Observed vertical ascent rate (690 m/hr at 7,900m) exceeded West VO2max High-Altitude physiological ceiling (345 m/hr). Mechanical assist / helicopter segment check triggered.',
+    forensicMetricLabel: 'V_obs = 690 m/hr > V_max = 345 m/hr',
+    status: 'QUEUED_FOR_HUMAN_AUDIT',
+  },
+  {
+    sequenceNumber: 939,
+    timestampIso: '2026-11-12T10:31:52Z',
+    timeBucketLabel: '20:00 UTC',
+    triggerCode: ForensicAnomalyFlag.HIGH_VISUAL_DUPLICATE_FLAG,
+    severity: 'HIGH',
+    departmentId: GovernanceDepartmentId.DEPT_05_SECURITY,
+    targetResourceId: 'EVID-2026-7719 (DEST-003 Kangchenjunga)',
+    summary:
+      '64-bit DCT perceptual hash (pHash) matched historical summit photograph EVID-2025-1102 with Hamming distance D_H = 4 bits (<= 6 bit duplicate threshold). Flagged for Senior Reviewer comparison.',
+    forensicMetricLabel: '64-bit DCT pHash D_H = 4 bits',
+    status: 'QUEUED_FOR_HUMAN_AUDIT',
+  },
+  {
+    sequenceNumber: 940,
+    timestampIso: '2026-11-12T10:38:04Z',
+    timeBucketLabel: '24:00 UTC',
+    triggerCode: 'COMMERCIAL_FIREWALL_BLOCK',
+    severity: 'HIGH',
+    departmentId: GovernanceDepartmentId.DEPT_11_INTERNAL_AUDIT,
+    targetResourceId: 'CASE-2026-4410 (Reviewer DTO)',
+    summary:
+      'System #12 Business Independence Firewall stripped commercial sponsor metadata before rendering ReviewerCaseViewDTO. Zero commercial fields exposed to verification reviewer.',
+    forensicMetricLabel: 'ForbiddenCommercialFields = 0 leaked',
+    status: 'CONTAINED',
+  },
+  {
+    sequenceNumber: 941,
+    timestampIso: '2026-11-12T10:42:18Z',
+    timeBucketLabel: '24:00 UTC',
+    triggerCode: ForensicAnomalyFlag.SYNTHETIC_DEM_CLAMP_FLAG,
+    severity: 'CRITICAL',
+    departmentId: GovernanceDepartmentId.DEPT_05_SECURITY,
+    targetResourceId: 'APP-2026-8841 (DEST-001)',
+    summary:
+      'Synthetic GPX elevation track detected: Copernicus GLO-30 DEM RMSE = 0.14m (< 0.30m artificial clamp threshold over 820 trackpoints). Routed to Human Anti-Fraud Investigator.',
+    forensicMetricLabel: 'E_RMSE = 0.14m (< 0.3m threshold)',
+    status: 'QUEUED_FOR_HUMAN_AUDIT',
+  },
 ];
+
+function buildCanonicalInitialAuditLogs(): ReadonlyArray<SecurityAuditLogEntry> {
+  const chronologicalBuilt: SecurityAuditLogEntry[] = [];
+  for (let i = 0; i < CHRONOLOGICAL_SEED_AUDIT_PAYLOADS.length; i++) {
+    const raw = CHRONOLOGICAL_SEED_AUDIT_PAYLOADS[i];
+    const prevAuditHash =
+      i === 0
+        ? SECURITY_AUDIT_GENESIS_HASH
+        : chronologicalBuilt[i - 1].currentEventHash;
+    const eventId = `SEC-AUD-2026-${String(raw.sequenceNumber).padStart(4, '0')}`;
+    const entryWithoutCurrentHash: Omit<SecurityAuditLogEntry, 'currentEventHash'> = {
+      eventId,
+      sequenceNumber: raw.sequenceNumber,
+      timestampIso: raw.timestampIso,
+      timeBucketLabel: raw.timeBucketLabel,
+      triggerCode: raw.triggerCode,
+      severity: raw.severity,
+      departmentId: raw.departmentId,
+      targetResourceId: raw.targetResourceId,
+      summary: raw.summary,
+      forensicMetricLabel: raw.forensicMetricLabel,
+      prevAuditHash,
+      status: raw.status,
+    };
+    const currentEventHash = computeSecurityAuditEventPayloadHash(entryWithoutCurrentHash);
+    chronologicalBuilt.push(
+      Object.freeze({
+        ...entryWithoutCurrentHash,
+        currentEventHash,
+      })
+    );
+  }
+  // Return newest-first (index 0 = seq 941, index length-1 = seq 934 genesis anchor)
+  return Object.freeze(chronologicalBuilt.reverse());
+}
+
+export const INITIAL_SECURITY_AUDIT_LOGS: ReadonlyArray<SecurityAuditLogEntry> =
+  buildCanonicalInitialAuditLogs();
 
 const SIMULATED_TRIGGER_TEMPLATES: ReadonlyArray<{
   readonly triggerCode: SecurityTriggerCode;
@@ -294,33 +361,104 @@ const SIMULATED_TRIGGER_TEMPLATES: ReadonlyArray<{
   },
 ];
 
-function computeDeterministicHexHash(seedInput: string, seqNumber: number): string {
-  return computeSha256Hex(`${seedInput}:SEQ:${seqNumber}`);
-}
-
 /**
- * Verifies that every audit log entry's `prevAuditHash` matches the chronological predecessor's `currentEventHash`.
+ * AUD-04: Verifies the entire newest-first security audit log chain:
+ * 1. Non-empty chain check
+ * 2. Genesis anchor check (`oldest.prevAuditHash === SECURITY_AUDIT_GENESIS_HASH` and `sequenceNumber === 934`)
+ * 3. Monotonic sequence continuity (`newer.sequenceNumber === older.sequenceNumber + 1`)
+ * 4. Previous-hash link continuity (`newer.prevAuditHash === older.currentEventHash`)
+ * 5. Canonical event payload SHA-256 recomputation (`entry.currentEventHash === computeSecurityAuditEventPayloadHash(entry)`)
  */
 export function verifyAuditChainIntegrity(logs: ReadonlyArray<SecurityAuditLogEntry>): {
   readonly isIntact: boolean;
   readonly verifiedLinksCount: number;
+  readonly failureReason:
+    | null
+    | 'EMPTY_CHAIN'
+    | 'GENESIS_HASH_MISMATCH'
+    | 'SEQUENCE_DISCONTINUITY'
+    | 'PREV_HASH_MISMATCH'
+    | 'PAYLOAD_TAMPERED_HASH_MISMATCH';
+  readonly failedEventId: string | null;
 } {
-  if (logs.length <= 1) {
-    return { isIntact: true, verifiedLinksCount: logs.length };
+  if (logs.length === 0) {
+    return {
+      isIntact: false,
+      verifiedLinksCount: 0,
+      failureReason: 'EMPTY_CHAIN',
+      failedEventId: null,
+    };
   }
-  for (let i = 0; i < logs.length - 1; i++) {
-    const newerEntry = logs[i];
-    const olderEntry = logs[i + 1];
-    if (newerEntry.prevAuditHash !== olderEntry.currentEventHash) {
-      return { isIntact: false, verifiedLinksCount: i };
+
+  // 1. Verify Genesis Anchor on oldest entry (tail of newest-first list)
+  const oldestEntry = logs[logs.length - 1];
+  if (
+    oldestEntry.prevAuditHash !== SECURITY_AUDIT_GENESIS_HASH ||
+    oldestEntry.sequenceNumber !== SECURITY_AUDIT_GENESIS_SEQUENCE
+  ) {
+    return {
+      isIntact: false,
+      verifiedLinksCount: 0,
+      failureReason: 'GENESIS_HASH_MISMATCH',
+      failedEventId: oldestEntry.eventId,
+    };
+  }
+
+  // 2. Verify every entry's canonical payload SHA-256 hash and adjacent links
+  for (let i = 0; i < logs.length; i++) {
+    const current = logs[i];
+    const expectedEventId = `SEC-AUD-2026-${String(current.sequenceNumber).padStart(4, '0')}`;
+    if (current.eventId !== expectedEventId) {
+      return {
+        isIntact: false,
+        verifiedLinksCount: i,
+        failureReason: 'SEQUENCE_DISCONTINUITY',
+        failedEventId: current.eventId,
+      };
+    }
+
+    const recomputedHash = computeSecurityAuditEventPayloadHash(current);
+    if (current.currentEventHash !== recomputedHash) {
+      return {
+        isIntact: false,
+        verifiedLinksCount: i,
+        failureReason: 'PAYLOAD_TAMPERED_HASH_MISMATCH',
+        failedEventId: current.eventId,
+      };
+    }
+
+    if (i < logs.length - 1) {
+      const olderEntry = logs[i + 1];
+      if (current.sequenceNumber !== olderEntry.sequenceNumber + 1) {
+        return {
+          isIntact: false,
+          verifiedLinksCount: i,
+          failureReason: 'SEQUENCE_DISCONTINUITY',
+          failedEventId: current.eventId,
+        };
+      }
+      if (current.prevAuditHash !== olderEntry.currentEventHash) {
+        return {
+          isIntact: false,
+          verifiedLinksCount: i,
+          failureReason: 'PREV_HASH_MISMATCH',
+          failedEventId: current.eventId,
+        };
+      }
     }
   }
-  return { isIntact: true, verifiedLinksCount: logs.length };
+
+  return {
+    isIntact: true,
+    verifiedLinksCount: logs.length,
+    failureReason: null,
+    failedEventId: null,
+  };
 }
 
 /**
  * Pure, deterministic state transition that appends a new SHA-256 hash-chained audit event
- * to the head of the audit log list without side effects.
+ * to the head of the audit log list without side effects or genesis truncation.
  */
 export function appendChainedSecurityAuditEvent(
   currentLogs: ReadonlyArray<SecurityAuditLogEntry>,
@@ -332,18 +470,20 @@ export function appendChainedSecurityAuditEvent(
   readonly createdEntry: SecurityAuditLogEntry;
 } {
   const latestEntry = currentLogs[0];
+  const nextSequenceNumber =
+    seqNumber === latestEntry.sequenceNumber + 1
+      ? seqNumber
+      : latestEntry.sequenceNumber + 1;
   const idx =
     templateIndex !== undefined
       ? Math.abs(templateIndex) % SIMULATED_TRIGGER_TEMPLATES.length
-      : Math.abs(seqNumber) % SIMULATED_TRIGGER_TEMPLATES.length;
+      : Math.abs(nextSequenceNumber) % SIMULATED_TRIGGER_TEMPLATES.length;
   const tpl = SIMULATED_TRIGGER_TEMPLATES[idx];
-  const newEventId = `SEC-AUD-2026-0${seqNumber}`;
-  const newHash = computeDeterministicHexHash(
-    `${latestEntry.currentEventHash}:${newEventId}:${tpl.triggerCode}`,
-    seqNumber
-  );
-  const createdEntry: SecurityAuditLogEntry = {
+  const newEventId = `SEC-AUD-2026-${String(nextSequenceNumber).padStart(4, '0')}`;
+
+  const entryWithoutCurrentHash: Omit<SecurityAuditLogEntry, 'currentEventHash'> = {
     eventId: newEventId,
+    sequenceNumber: nextSequenceNumber,
     timestampIso,
     timeBucketLabel: 'LIVE STREAM',
     triggerCode: tpl.triggerCode,
@@ -353,11 +493,17 @@ export function appendChainedSecurityAuditEvent(
     summary: tpl.summary,
     forensicMetricLabel: tpl.forensicMetricLabel,
     prevAuditHash: latestEntry.currentEventHash,
-    currentEventHash: newHash,
     status: tpl.status,
   };
+
+  const currentEventHash = computeSecurityAuditEventPayloadHash(entryWithoutCurrentHash);
+  const createdEntry: SecurityAuditLogEntry = Object.freeze({
+    ...entryWithoutCurrentHash,
+    currentEventHash,
+  });
+
   return {
-    nextLogs: [createdEntry, ...currentLogs.slice(0, 19)],
+    nextLogs: [createdEntry, ...currentLogs],
     createdEntry,
   };
 }

@@ -20,7 +20,7 @@ Official Domain: [https://0to8848official.com](https://0to8848official.com)
 > **ACHIEVEMENTS MUST BE EARNED, NEVER BOUGHT.**
 
 - Standard digital badges, standard achievement certificates, public verification, and appeals are **100% Free Forever**.
-- Sponsors, advertisers, and subscriptions are technically airgapped (`ReviewerCaseViewDTO` compile-time firewall) from verification and leaderboard calculations.
+- Sponsors, advertisers, and subscriptions are isolated from verification and leaderboard calculations via explicit runtime allowlist projection (`sanitizeCaseForReviewerFirewall`) paired with `ReviewerCaseViewDTO` compile-time type contracts.
 - Payment collection (`PAYMENTS_ENABLED = false`) and Blockchain minting (`BLOCKCHAIN_ENABLED = false`) are hard-disabled at launch until legal, regulatory, and security audits are formally authorized.
 
 ---

@@ -3,17 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 0 TO 8848 — Phase 04 Automated Design System, Accessibility (WCAG 2.2 AA),
- * Bilingual (EN/NE) & RTL (AR) I18n, and 42-Page Public Website Verification Suite
+ * Bilingual (EN/NE) & RTL (AR) I18n, 42-Page Public Website, and AUD-03/AUD-04 UI Verification Suite
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { validateCredentialIdFormat } from '../src/components/credentials/OfficialCertificateView.tsx';
+import {
+  lookupCredentialVerificationPortal,
+  validateCredentialIdFormat,
+} from '../src/components/credentials/OfficialCertificateView.tsx';
 import { EVEREST_SOUTH_COL_WAYPOINTS } from '../src/components/geospatial/AccessibleRouteProfile.tsx';
 import {
   INITIAL_SECURITY_AUDIT_LOGS,
   INITIAL_SECURITY_TIME_SERIES,
+  SECURITY_AUDIT_GENESIS_HASH,
   appendChainedSecurityAuditEvent,
+  computeSecurityAuditEventPayloadHash,
   verifyAuditChainIntegrity,
 } from '../src/components/security/SecurityIncidentIntelligence.tsx';
 import {
@@ -109,12 +114,35 @@ describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pa
     assert.equal(EVEREST_SOUTH_COL_WAYPOINTS[6].elevationMeters, 8848.86);
   });
 
-  it('SEC-INT-TEST-01 & BUG-04-01: Security Incident Intelligence audit logs maintain intact SHA-256 hash chain across rapid consecutive event injections', () => {
+  it('SEC-INT-TEST-01, BUG-04-01 & AUD-04: Security Incident Intelligence audit logs recompute canonical SHA-256 hashes, eliminate zero-padded fake hashes, and detect tampering', () => {
     assert.ok(INITIAL_SECURITY_AUDIT_LOGS.length >= 8, 'Expected at least 8 initial security audit log records');
     assert.equal(INITIAL_SECURITY_TIME_SERIES.length, 7, 'Expected 7 24-hour time-series windows for Recharts analysis');
 
+    // AUD-04 Check 1: Zero placeholder hashes (0000...) anywhere in INITIAL_SECURITY_AUDIT_LOGS
+    for (const event of INITIAL_SECURITY_AUDIT_LOGS) {
+      assert.equal(
+        event.currentEventHash.startsWith('000000'),
+        false,
+        `Event ${event.eventId} must not use fake zero-padded currentEventHash`
+      );
+      assert.equal(
+        event.prevAuditHash.startsWith('000000'),
+        false,
+        `Event ${event.eventId} must not use fake zero-padded prevAuditHash`
+      );
+      assert.equal(
+        event.currentEventHash,
+        computeSecurityAuditEventPayloadHash(event),
+        `Event ${event.eventId} currentEventHash must match canonical SHA-256 payload digest`
+      );
+    }
+    const oldestGenesisEvent =
+      INITIAL_SECURITY_AUDIT_LOGS[INITIAL_SECURITY_AUDIT_LOGS.length - 1];
+    assert.equal(oldestGenesisEvent.prevAuditHash, SECURITY_AUDIT_GENESIS_HASH);
+
     const initialVerification = verifyAuditChainIntegrity(INITIAL_SECURITY_AUDIT_LOGS);
     assert.equal(initialVerification.isIntact, true, 'Initial security audit log SHA-256 hash chain must be 100% intact');
+    assert.equal(initialVerification.failureReason, null);
 
     // Simulate 5 rapid consecutive security trigger injections and verify zero duplicate IDs and 100% hash chain continuity
     let logs = INITIAL_SECURITY_AUDIT_LOGS;
@@ -126,9 +154,45 @@ describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pa
     assert.equal(postInjectionVerification.isIntact, true, 'Post-injection SHA-256 hash chain must remain 100% intact');
     const uniqueEventIds = new Set(logs.map((l) => l.eventId));
     assert.equal(uniqueEventIds.size, logs.length, 'Every audit event ID must be strictly unique');
+
+    // AUD-04 Negative Test 1: Tamper with an event summary without recomputing hash chain
+    const tamperedSummaryLogs = INITIAL_SECURITY_AUDIT_LOGS.map((evt, idx) =>
+      idx === 3 ? { ...evt, summary: 'FORGED SUMMARY PAYLOAD' } : evt
+    );
+    const tamperedSummaryResult = verifyAuditChainIntegrity(tamperedSummaryLogs);
+    assert.equal(tamperedSummaryResult.isIntact, false);
+    assert.equal(tamperedSummaryResult.failedEventId, INITIAL_SECURITY_AUDIT_LOGS[3].eventId);
+    assert.equal(tamperedSummaryResult.failureReason, 'PAYLOAD_TAMPERED_HASH_MISMATCH');
+
+    // AUD-04 Negative Test 2: Tamper with genesis prevAuditHash (oldest event in descending list)
+    const genesisIdx = INITIAL_SECURITY_AUDIT_LOGS.length - 1;
+    const tamperedGenesisLogs = INITIAL_SECURITY_AUDIT_LOGS.map((evt, idx) =>
+      idx === genesisIdx
+        ? {
+            ...evt,
+            prevAuditHash: '0000000000000000000000000000000000000000000000000000000000094100',
+          }
+        : evt
+    );
+    const tamperedGenesisResult = verifyAuditChainIntegrity(tamperedGenesisLogs);
+    assert.equal(tamperedGenesisResult.isIntact, false);
+    assert.equal(
+      tamperedGenesisResult.failedEventId,
+      INITIAL_SECURITY_AUDIT_LOGS[genesisIdx].eventId
+    );
+    assert.equal(tamperedGenesisResult.failureReason, 'GENESIS_HASH_MISMATCH');
+
+    // AUD-04 Negative Test 3: Tamper with sequenceNumber continuity (changing 939 -> 9999 creates gap at 940)
+    const tamperedSeqLogs = INITIAL_SECURITY_AUDIT_LOGS.map((evt, idx) =>
+      idx === 2 ? { ...evt, sequenceNumber: 9999 } : evt
+    );
+    const tamperedSeqResult = verifyAuditChainIntegrity(tamperedSeqLogs);
+    assert.equal(tamperedSeqResult.isIntact, false);
+    assert.equal(tamperedSeqResult.failedEventId, 'SEC-AUD-2026-0940');
+    assert.equal(tamperedSeqResult.failureReason, 'SEQUENCE_DISCONTINUITY');
   });
 
-  it('CRED-VAL-TEST-01 & BUG-04-02: Official Certificate Credential ID validator enforces canonical format and rejects injection strings', () => {
+  it('CRED-VAL-TEST-01, BUG-04-02 & AUD-03: Official Certificate Credential ID validator and portal lookup reject unknown IDs with 404 NOT_FOUND', () => {
     const valid = validateCredentialIdFormat('0TO8848-CRED-2026-000108');
     assert.equal(valid.isValid, true);
     assert.equal(valid.normalizedId, '0TO8848-CRED-2026-000108');
@@ -136,5 +200,10 @@ describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pa
     const malformed = validateCredentialIdFormat('../../admin?override=true');
     assert.equal(malformed.isValid, false);
     assert.equal(malformed.normalizedId, 'INVALID-CREDENTIAL-ID');
+
+    const unknownPortalLookup = lookupCredentialVerificationPortal('0TO8848-CRED-2026-000999');
+    assert.equal(unknownPortalLookup.status, 'NOT_FOUND');
+    assert.equal(unknownPortalLookup.httpStatus, 404);
+    assert.equal(unknownPortalLookup.record, null);
   });
 });

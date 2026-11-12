@@ -133,8 +133,9 @@ export enum VerificationCaseStatus {
 
 /**
  * System #12: BUSINESS INDEPENDENCE FIREWALL DTO
- * Compile-time guarantee that a Reviewer examining a case is completely blinded to
- * whether the applicant has a paid subscription, sponsor affiliation, or marketplace booking.
+ * Compile-time TypeScript contract prohibiting commercial properties on reviewer case views.
+ * NOTE: Because TypeScript types are erased at runtime, runtime isolation is enforced by
+ * the deep explicit allowlist projection in `sanitizeCaseForReviewerFirewall()`.
  */
 export interface ForbiddenCommercialFieldsOnVerification {
   readonly sponsorId?: never;

@@ -33,11 +33,14 @@ jobs:
       - name: Step 1 — Secret & Constitutional Lock Scanner
         run: npm run security:scan
 
-      - name: Step 2 — Strict TypeScript Verification (tsc --noEmit)
+      - name: Step 2 — Dependency Vulnerability Audit (npm audit)
+        run: npm run security:audit
+
+      - name: Step 3 — Strict TypeScript Verification (tsc --noEmit)
         run: npm run lint
 
-      - name: Step 3 — Automated Test Suite Execution
+      - name: Step 4 — Automated Test Suite Execution
         run: npm test
 
-      - name: Step 4 — Production Bundle & Build Integrity Check
+      - name: Step 5 — Production Bundle & Build Integrity Check
         run: npm run build

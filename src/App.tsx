@@ -11,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { DestinationBadge3D } from './components/credentials/DestinationBadge3D.tsx';
 import {
   OfficialCertificateView,
+  lookupCredentialVerificationPortal,
   validateCredentialIdFormat,
 } from './components/credentials/OfficialCertificateView.tsx';
 import { AccessibleRouteProfile } from './components/geospatial/AccessibleRouteProfile.tsx';
@@ -813,7 +814,7 @@ export default function App() {
               </h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <label htmlFor="credential-lookup-input" className="sr-only">
                 Credential ID Lookup
               </label>
@@ -826,36 +827,38 @@ export default function App() {
                 className="px-3 py-1.5 bg-[#121212] border border-neutral-700 rounded-lg text-xs font-mono text-white w-64"
                 placeholder="0TO8848-CRED-2026-000108"
               />
-              <span
-                className={`text-xs font-mono whitespace-nowrap ${
-                  validateCredentialIdFormat(credentialLookupInput).isValid
-                    ? 'text-emerald-400'
-                    : 'text-rose-400'
-                }`}
+              <button
+                type="button"
+                onClick={() => setCredentialLookupInput('0TO8848-CRED-2026-999999')}
+                className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 rounded text-xs font-mono text-neutral-300"
               >
-                {validateCredentialIdFormat(credentialLookupInput).isValid
-                  ? 'ZERO-PII PORTAL READY'
-                  : 'INVALID ID FORMAT'}
-              </span>
+                Test Unknown ID (404)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCredentialLookupInput('0TO8848-CRED-2026-000108')}
+                className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 rounded text-xs font-mono text-neutral-300"
+              >
+                Load Spec Fixture
+              </button>
+              {(() => {
+                const portalLookup = lookupCredentialVerificationPortal(credentialLookupInput);
+                const statusColor =
+                  portalLookup.status === 'DESIGN_PREVIEW_ONLY'
+                    ? 'text-amber-400'
+                    : portalLookup.status === 'NOT_FOUND'
+                      ? 'text-amber-300'
+                      : 'text-rose-400';
+                return (
+                  <span className={`text-xs font-mono whitespace-nowrap ${statusColor}`}>
+                    {portalLookup.statusMessage}
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
-          <OfficialCertificateView
-            certificateId="0TO8848-CERT-2026-000108"
-            credentialId={credentialLookupInput}
-            adventurerDisplayName="Pasang Dawa Sherpa (Sample Architecture Preview)"
-            achievementTitleEn="Mount Everest (Sagarmatha) Summit — Southeast Ridge"
-            achievementTitleNe="सगरमाथा चुचुरो आरोहण — दक्षिणपूर्वी रिज"
-            destinationNameEn="Mount Everest / Sagarmatha"
-            destinationNameNe="सगरमाथा / चोमोलुङमा"
-            routeNameEn="RTE-001A: South Col — Southeast Ridge"
-            elevationMeters={8848.86}
-            completionDateIso="2026-05-19"
-            approvalDateIso="2026-05-24"
-            currentCredentialHash="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-            previousEventHash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-            reviewerTierUsed="DUAL L4 SENIOR REVIEWERS (2x) + HERITAGE GUARDIAN"
-          />
+          <OfficialCertificateView credentialId={credentialLookupInput} />
         </section>
 
         {/* SECTION 6: SECURITY INCIDENT INTELLIGENCE & REAL-TIME AUDIT TELEMETRY (RECHARTS) */}
