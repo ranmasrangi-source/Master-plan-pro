@@ -1,0 +1,39 @@
+name: 0 TO 8848 — CI, Security & Constitutional Gate
+
+on:
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  constitutional-and-security-gate:
+    name: Secret Scan, Type Check, Test Suite & Build Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies (Deterministic Lock)
+        run: npm install
+
+      - name: Step 1 — Secret & Constitutional Lock Scanner
+        run: npm run security:scan
+
+      - name: Step 2 — Strict TypeScript Verification (tsc --noEmit)
+        run: npm run lint
+
+      - name: Step 3 — Automated Test Suite Execution
+        run: npm test
+
+      - name: Step 4 — Production Bundle & Build Integrity Check
+        run: npm run build

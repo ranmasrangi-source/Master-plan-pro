@@ -1,0 +1,15 @@
+# 0 TO 8848 — Code Ownership & Departmental Review Rules (Phase 03)
+# Constitutional & Governance Files require Founder + Governance Quorum review
+/docs/00_PROJECT_CONSTITUTION.md @founder-office @governance-committee
+/docs/23_PHASE_ACCEPTANCE.md @founder-office @internal-audit
+/src/types/constitution.ts @founder-office @security-department
+
+# Verification, ECF, Anti-Fraud & Appeal Core require Verification & Security review
+/docs/05_VERIFICATION_STANDARDS.md @verification-department @security-department
+/src/types/verification.ts @verification-department @security-department
+/src/types/credentials.ts @verification-department @security-department
+
+# Database, Adapters & Security Infrastructure
+/docs/08_DATABASE_SCHEMA.md @database-architecture @security-department
+/src/adapters/ @software-architecture @security-department
+/scripts/security-scan.ts @security-department @internal-audit

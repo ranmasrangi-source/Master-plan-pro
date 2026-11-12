@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --color-obsidian: #0A0A0A;
+    --color-surface: #121212;
+    --color-surface-elevated: #1A1A1A;
+    --color-gold-metallic: #C9A86A;
+    --color-gold-highlight: #FFD700;
+    --color-summit-white: #FFFFFF;
+    --color-stone-muted: #A3A3A3;
+    --font-display: 'Cinzel', 'Noto Sans Devanagari', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #0A0A0A;
+    color: #FFFFFF;
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  .font-mono, .tabular-nums {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

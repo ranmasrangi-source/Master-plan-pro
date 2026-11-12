@@ -1,0 +1,6 @@
+{
+  "name": "0 TO 8848 — Global Adventure Achievement Platform",
+  "description": "Built in Nepal, Made for the World. International adventure achievement recognition platform with independent human verification, free digital badges, verifiable certificates, and 100 featured global destinations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
