@@ -64,12 +64,23 @@ export const CANONICAL_MAIN_BRANCH_PROTECTION_POLICY: GitHubBranchProtectionPayl
     required_conversation_resolution: true,
   });
 
+export interface DetailedProtectionSettings {
+  readonly requiredPullRequestReviewsEnabled: boolean | null;
+  readonly requiredApprovingReviewCount: number | null;
+  readonly dismissStaleReviews: boolean | null;
+  readonly enforceAdminsEnabled: boolean | null;
+  readonly allowForcePushesEnabled: boolean | null;
+  readonly allowDeletionsEnabled: boolean | null;
+  readonly requiredConversationResolutionEnabled: boolean | null;
+}
+
 export interface LiveBranchProtectionInspection {
   readonly repository: string;
   readonly branch: string;
   readonly httpStatus: number;
   readonly protectionEnabled: boolean;
   readonly requiredContexts: readonly string[];
+  readonly detailedSettings?: DetailedProtectionSettings | null;
   readonly rawProtectionObject: unknown;
 }
 
@@ -90,20 +101,57 @@ export async function inspectRemoteBranchProtection(
 
   const res = await fetch(url, { headers });
   const data = (await res.json()) as {
+    protected?: boolean;
     protection?: {
       enabled?: boolean;
       required_status_checks?: {
+        enforcement_level?: string;
         contexts?: string[];
         checks?: Array<{ context: string }>;
       };
     };
   };
 
-  const protectionEnabled = Boolean(data?.protection?.enabled);
+  const protectionEnabled = Boolean(data?.protected && data?.protection?.enabled);
   const contextsFromChecks =
     data?.protection?.required_status_checks?.checks?.map((c) => c.context) ?? [];
   const legacyContexts = data?.protection?.required_status_checks?.contexts ?? [];
   const requiredContexts = Array.from(new Set([...legacyContexts, ...contextsFromChecks]));
+
+  let detailedSettings: DetailedProtectionSettings | null = null;
+  if (token && protectionEnabled) {
+    try {
+      const protRes = await fetch(`${url}/protection`, { headers });
+      if (protRes.ok) {
+        const protData = (await protRes.json()) as {
+          required_pull_request_reviews?: {
+            dismiss_stale_reviews?: boolean;
+            required_approving_review_count?: number;
+          };
+          enforce_admins?: { enabled?: boolean };
+          allow_force_pushes?: { enabled?: boolean };
+          allow_deletions?: { enabled?: boolean };
+          required_conversation_resolution?: { enabled?: boolean };
+        };
+        detailedSettings = {
+          requiredPullRequestReviewsEnabled: Boolean(protData.required_pull_request_reviews),
+          requiredApprovingReviewCount:
+            protData.required_pull_request_reviews?.required_approving_review_count ?? 0,
+          dismissStaleReviews: Boolean(
+            protData.required_pull_request_reviews?.dismiss_stale_reviews
+          ),
+          enforceAdminsEnabled: Boolean(protData.enforce_admins?.enabled),
+          allowForcePushesEnabled: Boolean(protData.allow_force_pushes?.enabled),
+          allowDeletionsEnabled: Boolean(protData.allow_deletions?.enabled),
+          requiredConversationResolutionEnabled: Boolean(
+            protData.required_conversation_resolution?.enabled
+          ),
+        };
+      }
+    } catch {
+      detailedSettings = null;
+    }
+  }
 
   return {
     repository: `${owner}/${repo}`,
@@ -111,6 +159,7 @@ export async function inspectRemoteBranchProtection(
     httpStatus: res.status,
     protectionEnabled,
     requiredContexts,
+    detailedSettings,
     rawProtectionObject: data?.protection ?? null,
   };
 }
@@ -136,6 +185,24 @@ export function evaluateBranchProtectionCompliance(
     failedChecks.push(
       `MISSING_REQUIRED_STATUS_CHECK:${REQUIRED_CI_CHECK_CONTEXT}`
     );
+  }
+  if (inspection.detailedSettings) {
+    const ds = inspection.detailedSettings;
+    if (
+      ds.requiredPullRequestReviewsEnabled === false ||
+      (ds.requiredApprovingReviewCount !== null && ds.requiredApprovingReviewCount < 1)
+    ) {
+      failedChecks.push('PULL_REQUEST_REVIEWS_NOT_REQUIRED');
+    }
+    if (ds.allowForcePushesEnabled === true) {
+      failedChecks.push('FORCE_PUSHES_NOT_BLOCKED');
+    }
+    if (ds.allowDeletionsEnabled === true) {
+      failedChecks.push('BRANCH_DELETIONS_NOT_BLOCKED');
+    }
+    if (ds.enforceAdminsEnabled === false) {
+      failedChecks.push('ADMIN_ENFORCEMENT_DISABLED');
+    }
   }
   return {
     compliant: failedChecks.length === 0,
@@ -174,24 +241,26 @@ export async function applyRemoteBranchProtection(
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const shouldApply = process.argv.includes('--apply');
-  const requireEnabled = process.argv.includes('--require-enabled');
   const adminToken =
     process.env.GITHUB_ADMIN_TOKEN || process.env.BRANCH_PROTECTION_ADMIN_TOKEN || '';
 
   (async () => {
-    if (shouldApply) {
-      if (!adminToken) {
-        console.error(
-          '[0 TO 8848 Branch Protection] Cannot apply remotely: GITHUB_ADMIN_TOKEN / BRANCH_PROTECTION_ADMIN_TOKEN is not set in environment.'
-        );
-        process.exit(1);
-      }
+    if (shouldApply && !adminToken) {
+      console.error(
+        '[0 TO 8848 Branch Protection] FAIL: Cannot apply remotely because neither GITHUB_ADMIN_TOKEN nor BRANCH_PROTECTION_ADMIN_TOKEN is set in environment.'
+      );
+      process.exit(1);
+    }
+
+    if (adminToken) {
       const applied = await applyRemoteBranchProtection(adminToken);
       console.log(
-        `[0 TO 8848 Branch Protection] PUT /branches/main/protection HTTP ${applied.httpStatus} (success=${applied.success})`
+        `[0 TO 8848 Branch Protection] Provisioning PUT /branches/main/protection -> HTTP ${applied.httpStatus} (success=${applied.success})`
       );
-      if (!applied.success) {
-        console.error(JSON.stringify(applied.responseBody, null, 2));
+      if (!applied.success && shouldApply) {
+        console.error(
+          '[0 TO 8848 Branch Protection] FAIL: Remote branch protection provisioning rejected by GitHub API.'
+        );
         process.exit(1);
       }
     }
@@ -213,6 +282,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(
       `[0 TO 8848 Branch Protection] Required Status Checks: ${JSON.stringify(status.requiredContexts)}`
     );
+    if (status.detailedSettings) {
+      console.log(
+        `[0 TO 8848 Branch Protection] Detailed Settings: ${JSON.stringify(status.detailedSettings)}`
+      );
+    }
     console.log(
       `[0 TO 8848 Branch Protection] AUD-07 Compliance Status: ${
         compliance.compliant
@@ -222,20 +296,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
 
     if (!compliance.compliant) {
-      if (requireEnabled || shouldApply) {
-        console.error(
-          `[0 TO 8848 Branch Protection] FAIL: Mandatory branch protection requirements are not satisfied: ${compliance.failedChecks.join(', ')}`
-        );
-        process.exit(1);
-      } else {
-        console.warn(
-          '[0 TO 8848 Branch Protection] PERMISSION LIMITATION NOTICE: Unauthenticated / read-only CI token cannot mutate GitHub branch protection settings. Repository owner (ranmasrangi-source) must configure secrets.BRANCH_PROTECTION_ADMIN_TOKEN or run `GITHUB_ADMIN_TOKEN=<pat> npm run security:branch-protection -- --apply`.'
-        );
-      }
+      console.error(
+        `[0 TO 8848 Branch Protection] FAIL (Exit Code 1): Remote GitHub main branch protection is NON-COMPLIANT: ${compliance.failedChecks.join(', ')}.`
+      );
+      console.error(
+        '[0 TO 8848 Branch Protection] REMEDIATION ACTION REQUIRED BY REPOSITORY OWNER (ranmasrangi-source): Configure GitHub repository secret BRANCH_PROTECTION_ADMIN_TOKEN (PAT with Administration: Read and write) or enable branch protection on main in GitHub Settings -> Branches requiring status check "Secret Scan, Type Check, Test Suite & Build Integrity", PR review (1 approval), admin enforcement, and blocking force pushes/deletions.'
+      );
+      process.exit(1);
     }
   })().catch((err) => {
-    console.error('[0 TO 8848 Branch Protection] Error:', err);
+    console.error('[0 TO 8848 Branch Protection] Error:', err instanceof Error ? err.message : String(err));
     process.exit(1);
   });
 }
+
 

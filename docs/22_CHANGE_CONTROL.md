@@ -47,10 +47,12 @@ To eliminate any ambiguity across documentation, tests, and UI disclosures (`AUD
 
 ---
 
-## 4. Current Verified Release Baseline & Pending Founder Decisions (`AUD-08` & `AUD-09`)
-- **Latest Independently Verified Remote `main` Commit SHA:** `e04d53cda6d921942d4360bba95028de2fc4ffad` (Git Tree SHA: `0aaa6f5a7c850311b5d2b203c267b0dca9af7141`)
-- **Latest Independently Verified Remote GitHub Actions Run ID:** `43321202638` (`https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43321202638` — Job `131541996072`, `completed` / `success`)
+## 4. Current Verified Release Baseline & Pending Founder Decisions (`AUD-07`, `AUD-08` & `AUD-09`)
+- **Latest Independently Verified Remote `main` Commit SHA:** `996fa9cd02e7c1d8d55c6c97352f65ef19d268fd` (short SHA `996fa9c`; Git Tree SHA: `e7d58162be76a1b37aa593d2291fa041196de9c1`)
+- **Latest Independently Verified Remote GitHub Actions Run ID:** `43401819367` (`https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367` — Run `#9`, Job `131806279045`, `completed` / `success`)
+- **Strict Non-Zero Exit Enforcement on `AUD-07` (`scripts/branch-protection.ts`):** `npm run security:branch-protection` (Step 6 of `.github/workflows/ci-security-gate.yml`) now unconditionally exits with code `1` whenever remote GitHub `main` branch protection is disabled (`protected: false`) or missing required status checks (`Secret Scan, Type Check, Test Suite & Build Integrity`), PR review requirements, admin enforcement, or force-push/deletion blocks.
 - **Pending Founder Decisions Before Phase 05 Can Start:**
-  1. **Remote GitHub Branch Protection (`AUD-07`):** Enable `main` branch protection on `ranmasrangi-source/Master-plan-pro` (requiring PR approval and the status check `Secret Scan, Type Check, Test Suite & Build Integrity`) via repository owner (`ranmasrangi-source`) admin token or GitHub UI settings.
+  1. **Remote GitHub Branch Protection (`AUD-07`):** Enable `main` branch protection on `ranmasrangi-source/Master-plan-pro` (requiring PR approval and the status check `Secret Scan, Type Check, Test Suite & Build Integrity`, blocking force pushes and deletions, and enforcing admins) via repository owner (`ranmasrangi-source`) admin token (`secrets.BRANCH_PROTECTION_ADMIN_TOKEN`) or GitHub UI settings.
   2. **Gate 04 Written Sign-Off:** Explicit written Founder approval of Gate 04 (`PHASE 04 — BRAND, UI/UX & DESIGN SYSTEM`) prior to commencing `PHASE 05` (`Database Schema, Persistence & Core Data Layer`).
+
 

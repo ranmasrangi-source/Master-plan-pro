@@ -45,12 +45,8 @@ jobs:
       - name: Step 5 — Production Bundle & Build Integrity Check
         run: npm run build
 
-      - name: Step 6 — Main Branch Protection Policy Audit (and Auto-Provision if Admin Token Present)
+      - name: Step 6 — Main Branch Protection Compliance Audit (Exits 1 if Non-Compliant)
         env:
           BRANCH_PROTECTION_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECTION_ADMIN_TOKEN }}
-        run: |
-          if [ -n "$BRANCH_PROTECTION_ADMIN_TOKEN" ]; then
-            npm run security:branch-protection -- --apply
-          else
-            npm run security:branch-protection
-          fi
+        run: npm run security:branch-protection
+

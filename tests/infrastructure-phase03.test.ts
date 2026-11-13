@@ -190,10 +190,43 @@ describe('PHASE 03 — Development Infrastructure, Security Scan, Branch Protect
       httpStatus: 200,
       protectionEnabled: true,
       requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: {
+        requiredPullRequestReviewsEnabled: true,
+        requiredApprovingReviewCount: 1,
+        dismissStaleReviews: true,
+        enforceAdminsEnabled: true,
+        allowForcePushesEnabled: false,
+        allowDeletionsEnabled: false,
+        requiredConversationResolutionEnabled: true,
+      },
       rawProtectionObject: { enabled: true },
     });
     assert.equal(compliantEval.compliant, true);
     assert.equal(compliantEval.failedChecks.length, 0);
+
+    const weakDetailedEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: {
+        requiredPullRequestReviewsEnabled: false,
+        requiredApprovingReviewCount: 0,
+        dismissStaleReviews: false,
+        enforceAdminsEnabled: false,
+        allowForcePushesEnabled: true,
+        allowDeletionsEnabled: true,
+        requiredConversationResolutionEnabled: false,
+      },
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(weakDetailedEval.compliant, false);
+    assert.ok(weakDetailedEval.failedChecks.includes('PULL_REQUEST_REVIEWS_NOT_REQUIRED'));
+    assert.ok(weakDetailedEval.failedChecks.includes('FORCE_PUSHES_NOT_BLOCKED'));
+    assert.ok(weakDetailedEval.failedChecks.includes('BRANCH_DELETIONS_NOT_BLOCKED'));
+    assert.ok(weakDetailedEval.failedChecks.includes('ADMIN_ENFORCEMENT_DISABLED'));
   });
 });
+
 
