@@ -621,16 +621,28 @@ describe('0 TO 8848 — Phase 5 Readiness Gate & Post-CI Audit Remediation Suite
     assert.ok(/^[0-9a-f]{64}$/.test(previewFixture.record.currentCredentialHash));
   });
 
-  it('BUG-06: Enforces Constitutional HTTP 403 Gate on Payment & Blockchain Endpoints', () => {
+  it('BUG-06: Enforces Constitutional HTTP 403 Gate on Payment & Blockchain Endpoints (Including Alias Prefixes & Path Traversal)', () => {
     const paymentGate = enforceConstitutionalEndpointGate('/api/v1/payments/checkout');
     assert.equal(paymentGate.blocked, true);
     assert.equal(paymentGate.httpStatus, 403);
     assert.equal(paymentGate.errorCode, 'PAYMENT_COLLECTION_DISABLED_BY_CONSTITUTION');
 
+    const billingAliasGate = enforceConstitutionalEndpointGate(
+      '/api/v1/public/../billing/invoices?currency=USD'
+    );
+    assert.equal(billingAliasGate.blocked, true);
+    assert.equal(billingAliasGate.httpStatus, 403);
+    assert.equal(billingAliasGate.errorCode, 'PAYMENT_COLLECTION_DISABLED_BY_CONSTITUTION');
+
     const blockchainGate = enforceConstitutionalEndpointGate('/api/v1/blockchain/anchor');
     assert.equal(blockchainGate.blocked, true);
     assert.equal(blockchainGate.httpStatus, 403);
     assert.equal(blockchainGate.errorCode, 'BLOCKCHAIN_MODULE_DISABLED_BY_CONSTITUTION');
+
+    const web3NftAliasGate = enforceConstitutionalEndpointGate('/api/v1/nft/mint-soulbound');
+    assert.equal(web3NftAliasGate.blocked, true);
+    assert.equal(web3NftAliasGate.httpStatus, 403);
+    assert.equal(web3NftAliasGate.errorCode, 'BLOCKCHAIN_MODULE_DISABLED_BY_CONSTITUTION');
 
     const publicVerifyGate = enforceConstitutionalEndpointGate(
       '/api/v1/credentials/verify/0TO8848-CRED-2026-000108'
@@ -639,7 +651,7 @@ describe('0 TO 8848 — Phase 5 Readiness Gate & Post-CI Audit Remediation Suite
     assert.equal(publicVerifyGate.httpStatus, 200);
   });
 
-  it('BUG-07, BUG-08, BUG-09, BUG-10, BUG-12 & AUD-06: Verifies 100 Runtime Destinations, Lockfile/CI Parity, Dependency Vulnerability Audit, Date/Credential Validators & Doc Parity', () => {
+  it('BUG-07, BUG-08, BUG-09, BUG-10, BUG-12, AUD-06 & AUD-10: Verifies 100 Runtime Destinations, Lockfile/CI Parity, Dependency Vulnerability Audit, Date/Credential Validators & Doc Parity', () => {
     assert.equal(ALL_100_FEATURED_DESTINATIONS.length, 100);
     assert.equal(ALL_100_FEATURED_DESTINATIONS[0].destinationId, 'DEST-001');
     assert.equal(ALL_100_FEATURED_DESTINATIONS[99].destinationId, 'DEST-100');
@@ -649,6 +661,16 @@ describe('0 TO 8848 — Phase 5 Readiness Gate & Post-CI Audit Remediation Suite
       assert.equal(dest.destinationId, expectedId);
       assert.equal(dest.status, DestinationCatalogStatus.PROPOSED);
       assert.ok(dest.separatedRouteIds.length >= 1);
+      assert.ok(dest.source_url.startsWith('https://'));
+      assert.ok(dest.unverified_fields.length >= 3);
+      assert.ok(
+        dest.unverified_fields.includes('nearest_trauma_center_field_verification'),
+        `${expectedId} must explicitly mark nearest_trauma_center_field_verification in unverified_fields`
+      );
+      assert.ok(
+        dest.emergencyRescueProtocol.nearestTraumaOrHyperbaricCenter.includes('UNVERIFIED'),
+        `${expectedId} trauma center field must carry explicit UNVERIFIED notice until Phase 09 field verification`
+      );
       assert.equal(dest.emergencyRescueProtocol.nonRescuePlatformDisclaimer, true);
     }
 

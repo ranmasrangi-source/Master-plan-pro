@@ -1088,7 +1088,51 @@ export function authorizeIndependentAppealDecision(params: {
 
 // ============================================================================
 // BUG-06: RUNTIME CONSTITUTIONAL LAUNCH LOCK GATE (PAYMENTS & BLOCKCHAIN)
+// Note: In Phase 04 this is a pure TypeScript guard helper; live Express/HTTP
+// router middleware attachment is scheduled for Phase 05 / Phase 17 / Phase 18.
 // ============================================================================
+
+const LOCKED_PAYMENT_ENDPOINT_PREFIXES: ReadonlyArray<string> = [
+  '/api/v1/payments',
+  '/api/v1/payment',
+  '/api/v1/billing',
+  '/api/v1/checkout',
+  '/api/v1/subscriptions',
+  '/api/v1/stripe',
+];
+
+const LOCKED_BLOCKCHAIN_ENDPOINT_PREFIXES: ReadonlyArray<string> = [
+  '/api/v1/blockchain',
+  '/api/v1/web3',
+  '/api/v1/nft',
+  '/api/v1/mint',
+  '/api/v1/soulbound',
+];
+
+function normalizeEndpointPath(rawPath: string): string {
+  let decoded = rawPath.trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep raw trimmed path if malformed percent-encoding is supplied
+  }
+  const withoutQueryOrHash = decoded.split(/[?#]/)[0] ?? '';
+  const rawSegments = withoutQueryOrHash.replace(/\\/g, '/').split('/');
+  const resolvedSegments: string[] = [];
+  for (const seg of rawSegments) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') {
+      resolvedSegments.pop();
+      continue;
+    }
+    resolvedSegments.push(seg.toLowerCase());
+  }
+  return '/' + resolvedSegments.join('/');
+}
+
+function matchesPrefixBoundary(normalizedPath: string, prefix: string): boolean {
+  return normalizedPath === prefix || normalizedPath.startsWith(prefix + '/');
+}
 
 export function enforceConstitutionalEndpointGate(requestPath: string): {
   readonly blocked: boolean;
@@ -1098,10 +1142,12 @@ export function enforceConstitutionalEndpointGate(requestPath: string): {
     | 'PAYMENT_COLLECTION_DISABLED_BY_CONSTITUTION'
     | 'BLOCKCHAIN_MODULE_DISABLED_BY_CONSTITUTION';
 } {
-  const normalized = requestPath.trim().toLowerCase();
+  const normalized = normalizeEndpointPath(requestPath);
   if (
-    normalized.startsWith('/api/v1/payments') &&
-    CONSTITUTIONAL_LOCKS.PAYMENTS_ENABLED === false
+    CONSTITUTIONAL_LOCKS.PAYMENTS_ENABLED === false &&
+    LOCKED_PAYMENT_ENDPOINT_PREFIXES.some((prefix) =>
+      matchesPrefixBoundary(normalized, prefix)
+    )
   ) {
     return {
       blocked: true,
@@ -1110,8 +1156,10 @@ export function enforceConstitutionalEndpointGate(requestPath: string): {
     };
   }
   if (
-    normalized.startsWith('/api/v1/blockchain') &&
-    CONSTITUTIONAL_LOCKS.BLOCKCHAIN_ENABLED === false
+    CONSTITUTIONAL_LOCKS.BLOCKCHAIN_ENABLED === false &&
+    LOCKED_BLOCKCHAIN_ENDPOINT_PREFIXES.some((prefix) =>
+      matchesPrefixBoundary(normalized, prefix)
+    )
   ) {
     return {
       blocked: true,
@@ -1125,3 +1173,4 @@ export function enforceConstitutionalEndpointGate(requestPath: string): {
     errorCode: null,
   };
 }
+

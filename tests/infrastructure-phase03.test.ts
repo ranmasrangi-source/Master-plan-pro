@@ -13,6 +13,7 @@ import { describe, it } from 'node:test';
 import {
   CANONICAL_MAIN_BRANCH_PROTECTION_POLICY,
   REQUIRED_CI_CHECK_CONTEXT,
+  evaluateBranchProtectionCompliance,
 } from '../scripts/branch-protection.ts';
 import {
   SECRET_PATTERNS,
@@ -160,7 +161,7 @@ describe('PHASE 03 — Development Infrastructure, Security Scan, Branch Protect
       );
     }
 
-    // AUD-01: Verify canonical main branch protection policy contract
+    // AUD-01 & AUD-07: Verify canonical main branch protection policy contract and compliance evaluator
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.required_status_checks.strict, true);
     assert.ok(
       CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.required_status_checks.contexts.includes(
@@ -171,5 +172,28 @@ describe('PHASE 03 — Development Infrastructure, Security Scan, Branch Protect
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.allow_force_pushes, false);
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.allow_deletions, false);
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.required_conversation_resolution, true);
+
+    const nonCompliantEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: false,
+      requiredContexts: [],
+      rawProtectionObject: { enabled: false },
+    });
+    assert.equal(nonCompliantEval.compliant, false);
+    assert.ok(nonCompliantEval.failedChecks.includes('PROTECTION_DISABLED_ON_REMOTE_MAIN'));
+
+    const compliantEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(compliantEval.compliant, true);
+    assert.equal(compliantEval.failedChecks.length, 0);
   });
 });
+

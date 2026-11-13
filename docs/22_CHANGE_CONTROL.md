@@ -44,3 +44,13 @@ To eliminate any ambiguity across documentation, tests, and UI disclosures (`AUD
 ## 3. Constitutional & Policy Version Control
 - Historical Achievement Applications are always evaluated against the `effectivePolicyVersion` active at the time of application submission (or a more favorable updated alternative evidence pathway if approved by Governance).
 - Changes to `/docs/00_PROJECT_CONSTITUTION.md` or `/src/types/constitution.ts` require **Founder + Governance Committee Quorum** and a **72-hour cooling time-lock** (`System #14`).
+
+---
+
+## 4. Current Verified Release Baseline & Pending Founder Decisions (`AUD-08` & `AUD-09`)
+- **Latest Independently Verified Remote `main` Commit SHA:** `e04d53cda6d921942d4360bba95028de2fc4ffad` (Git Tree SHA: `0aaa6f5a7c850311b5d2b203c267b0dca9af7141`)
+- **Latest Independently Verified Remote GitHub Actions Run ID:** `43321202638` (`https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43321202638` — Job `131541996072`, `completed` / `success`)
+- **Pending Founder Decisions Before Phase 05 Can Start:**
+  1. **Remote GitHub Branch Protection (`AUD-07`):** Enable `main` branch protection on `ranmasrangi-source/Master-plan-pro` (requiring PR approval and the status check `Secret Scan, Type Check, Test Suite & Build Integrity`) via repository owner (`ranmasrangi-source`) admin token or GitHub UI settings.
+  2. **Gate 04 Written Sign-Off:** Explicit written Founder approval of Gate 04 (`PHASE 04 — BRAND, UI/UX & DESIGN SYSTEM`) prior to commencing `PHASE 05` (`Database Schema, Persistence & Core Data Layer`).
+

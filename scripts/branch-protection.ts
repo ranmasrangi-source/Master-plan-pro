@@ -115,6 +115,36 @@ export async function inspectRemoteBranchProtection(
   };
 }
 
+export interface BranchProtectionComplianceResult {
+  readonly compliant: boolean;
+  readonly protectionEnabled: boolean;
+  readonly requiredCheckPresent: boolean;
+  readonly failedChecks: readonly string[];
+}
+
+export function evaluateBranchProtectionCompliance(
+  inspection: LiveBranchProtectionInspection
+): BranchProtectionComplianceResult {
+  const failedChecks: string[] = [];
+  if (!inspection.protectionEnabled) {
+    failedChecks.push('PROTECTION_DISABLED_ON_REMOTE_MAIN');
+  }
+  const requiredCheckPresent = inspection.requiredContexts.includes(
+    REQUIRED_CI_CHECK_CONTEXT
+  );
+  if (!requiredCheckPresent) {
+    failedChecks.push(
+      `MISSING_REQUIRED_STATUS_CHECK:${REQUIRED_CI_CHECK_CONTEXT}`
+    );
+  }
+  return {
+    compliant: failedChecks.length === 0,
+    protectionEnabled: inspection.protectionEnabled,
+    requiredCheckPresent,
+    failedChecks,
+  };
+}
+
 export async function applyRemoteBranchProtection(
   token: string,
   owner: string = GITHUB_REPO_OWNER,
@@ -144,6 +174,7 @@ export async function applyRemoteBranchProtection(
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const shouldApply = process.argv.includes('--apply');
+  const requireEnabled = process.argv.includes('--require-enabled');
   const adminToken =
     process.env.GITHUB_ADMIN_TOKEN || process.env.BRANCH_PROTECTION_ADMIN_TOKEN || '';
 
@@ -151,7 +182,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (shouldApply) {
       if (!adminToken) {
         console.error(
-          '[0 TO 8848 Branch Protection] Cannot apply remotely: GITHUB_ADMIN_TOKEN is not set in environment.'
+          '[0 TO 8848 Branch Protection] Cannot apply remotely: GITHUB_ADMIN_TOKEN / BRANCH_PROTECTION_ADMIN_TOKEN is not set in environment.'
         );
         process.exit(1);
       }
@@ -171,6 +202,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       PROTECTED_BRANCH_NAME,
       adminToken || undefined
     );
+    const compliance = evaluateBranchProtectionCompliance(status);
+
     console.log(
       `[0 TO 8848 Branch Protection] Repository: ${status.repository} (${status.branch})`
     );
@@ -180,8 +213,29 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(
       `[0 TO 8848 Branch Protection] Required Status Checks: ${JSON.stringify(status.requiredContexts)}`
     );
+    console.log(
+      `[0 TO 8848 Branch Protection] AUD-07 Compliance Status: ${
+        compliance.compliant
+          ? 'COMPLIANT (PASS)'
+          : `NON-COMPLIANT (${compliance.failedChecks.join(', ')})`
+      }`
+    );
+
+    if (!compliance.compliant) {
+      if (requireEnabled || shouldApply) {
+        console.error(
+          `[0 TO 8848 Branch Protection] FAIL: Mandatory branch protection requirements are not satisfied: ${compliance.failedChecks.join(', ')}`
+        );
+        process.exit(1);
+      } else {
+        console.warn(
+          '[0 TO 8848 Branch Protection] PERMISSION LIMITATION NOTICE: Unauthenticated / read-only CI token cannot mutate GitHub branch protection settings. Repository owner (ranmasrangi-source) must configure secrets.BRANCH_PROTECTION_ADMIN_TOKEN or run `GITHUB_ADMIN_TOKEN=<pat> npm run security:branch-protection -- --apply`.'
+        );
+      }
+    }
   })().catch((err) => {
     console.error('[0 TO 8848 Branch Protection] Error:', err);
     process.exit(1);
   });
 }
+

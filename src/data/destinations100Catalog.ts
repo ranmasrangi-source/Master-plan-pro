@@ -216,12 +216,18 @@ export const ALL_100_FEATURED_DESTINATIONS: ReadonlyArray<FeaturedDestination> =
       source_type: seed.sourceType,
       last_verified_date: '2026-11-12',
       confidence: seed.confidence,
-      unverified_fields: seed.unverified,
+      unverified_fields: Array.from(
+        new Set([
+          ...seed.unverified,
+          'nearest_trauma_center_field_verification',
+          'sar_dispatch_phone_and_heli_ceiling_field_verification',
+        ])
+      ),
       geopoliticalFlag: seed.geoFlag,
       emergencyRescueProtocol: {
         primarySarAgency: seed.sarAgency,
         emergencyPhoneNumbers: seed.sarPhones,
-        nearestTraumaOrHyperbaricCenter: `${seed.jurisdiction} Regional Trauma & High-Altitude Medical Center`,
+        nearestTraumaOrHyperbaricCenter: `${seed.jurisdiction} Regional Trauma & High-Altitude Medical Center (UNVERIFIED — Pending Phase 09 Field Check)`,
         helicopterEvacuationCeilingMeters: seed.heliCeiling,
         mandatoryInsuranceMinimumUsd: seed.elev >= 6000 ? 100000 : 50000,
         nonRescuePlatformDisclaimer: true,
