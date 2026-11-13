@@ -2,49 +2,62 @@
 
 **Repository:** `https://github.com/ranmasrangi-source/Master-plan-pro`  
 **Branch:** `main`  
-**Latest Independently Verified Remote `main` Commit SHA:** `996fa9cd02e7c1d8d55c6c97352f65ef19d268fd` (short SHA `996fa9c`; Git Tree SHA: `e7d58162be76a1b37aa593d2291fa041196de9c1`)  
-**Latest Independently Verified Green GitHub Actions Run ID:** `43401819367` (Run `#9`, Attempt `#1`, Event: `push`)  
-**Latest Independently Verified Green GitHub Actions Run URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367`  
-**Latest Independently Verified Green GitHub Actions Job URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367/job/131806279045`  
-**Live Remote GitHub `main` Branch Protection Status (`AUD-07`):** **`FAIL`** (`protected: false`, `protection.enabled: false` — `npm run security:branch-protection` now exits with non-zero code `1` until enabled on GitHub by repository owner `ranmasrangi-source`)  
+**Latest Independently Verified Remote `main` Commit SHA:** `c4044b0bfce413af2157b9c91972013cd8f6c1a2` (short SHA `c4044b0`; Git Tree SHA: `70c16e8d509f04abe322635845cc44322f23f442`)  
+**Latest Remote GitHub Actions Run ID (Historical Run `#10` on `c4044b0`):** `43404302541` (Run `#10`, Attempt `#1`, Event: `push`, Conclusion: **`failure`** at Step 11 when `protected` was `false`; Steps 1–10 **`success`**)  
+**Latest Remote GitHub Actions Run URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43404302541`  
+**Latest Remote GitHub Actions Job URL:** `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43404302541/job/131814711194`  
+**Prior Green GitHub Actions Run ID (Run `#9`, Steps 1–10):** `43401819367` (Job `131806279045`, Commit `996fa9cd02e7c1d8d55c6c97352f65ef19d268fd`, Conclusion: **`success`**)  
+**Current Live Remote GitHub `main` Branch Protection Status (`AUD-07`):** **`UNVERIFIED`** *(Live `GET /branches/main` now confirms `protected: true`, `protection.enabled: true`, and required status check `"Secret Scan, Type Check, Test Suite & Build Integrity"` [**`PASS`**], whereas `GET /branches/main/protection` returns `HTTP 401 Requires authentication` without an administrative token, leaving the 8 detailed protection settings **`UNVERIFIED`**. `npm run security:branch-protection` exits with code `1` and reports `UNVERIFIED` until verified with an admin token.)*  
 **Gate 04 Status:** `AWAITING FOUNDER APPROVAL (NOT AUTOMATICALLY ACCEPTED)`  
 **Phase 05 Status:** `NOT STARTED (BLOCKED / LOCKED PENDING EXPLICIT WRITTEN FOUNDER APPROVAL)`
 
 ---
 
-## 1. Independent Verification of Remote Commit `996fa9cd02e7c1d8d55c6c97352f65ef19d268fd` & CI Run `43401819367` (`AUD-08` & `AUD-09`)
+## 1. Independent Verification of Remote Commit `c4044b0bfce413af2157b9c91972013cd8f6c1a2`, Historical CI Run `#10` (`43404302541`) & Current Live GitHub API State (`AUD-07`, `AUD-08` & `AUD-09`)
 
 Queried directly from the live GitHub REST API via:
 - `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/branches/main`
-- `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367`
-- `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367/jobs`
+- `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/branches/main/protection`
+- `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/rules/branches/main`
+- `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/actions/runs/43404302541`
+- `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/actions/runs/43404302541/jobs`
+
+### 1.1 Evolution of Remote Branch Protection (`AUD-07`)
+
+| Inspection Dimension | Previously Observed State (During Run `#10` at `09:48 UTC`) | Current Live GitHub API Evidence (`GET /branches/main` & `/branches/main/protection`) | Current Status |
+| :--- | :--- | :--- | :---: |
+| **`main` Branch `protected` & `protection.enabled`** | `"protected": false`, `"protection": { "enabled": false }` | `"protected": true`, `"protection": { "enabled": true }` | **`PASS`** |
+| **Required Status Check (`Secret Scan, Type Check, Test Suite & Build Integrity`)** | `"enforcement_level": "off"`, `"contexts": []`, `"checks": []` | `"enforcement_level": "everyone"`, `"contexts": ["Secret Scan, Type Check, Test Suite & Build Integrity"]`, `"checks": [{ "context": "Secret Scan, Type Check, Test Suite & Build Integrity", "app_id": 15368 }]` | **`PASS`** |
+| **8 Detailed Branch Protection Settings (`strict`, `>=1 PR approval`, `dismiss_stale_reviews`, `required_conversation_resolution`, `enforce_admins`, `allow_force_pushes: false`, `allow_deletions: false`, `required_linear_history`)** | Inactive (`protection.enabled: false`) | `GET /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection` returns `HTTP 401 {"message":"Requires authentication"}` when queried without an administrative token (`GITHUB_ADMIN_TOKEN` / `BRANCH_PROTECTION_ADMIN_TOKEN`). | **`UNVERIFIED`** |
+
+### 1.2 Historical CI Run `#10` (`43404302541`) Execution Evidence
 
 | Property | Verified Remote Value |
 | :--- | :--- |
 | **Workflow Name** | `0 TO 8848 — CI, Security & Constitutional Gate` (`.github/workflows/ci-security-gate.yml`) |
-| **Remote `main` Commit SHA** | `996fa9cd02e7c1d8d55c6c97352f65ef19d268fd` (`https://github.com/ranmasrangi-source/Master-plan-pro/commit/996fa9cd02e7c1d8d55c6c97352f65ef19d268fd`) |
-| **Remote Git Tree SHA** | `e7d58162be76a1b37aa593d2291fa041196de9c1` |
+| **Remote `main` Commit SHA** | `c4044b0bfce413af2157b9c91972013cd8f6c1a2` (`https://github.com/ranmasrangi-source/Master-plan-pro/commit/c4044b0bfce413af2157b9c91972013cd8f6c1a2`) |
+| **Remote Git Tree SHA** | `70c16e8d509f04abe322635845cc44322f23f442` |
 | **Trigger Event** | `push` on branch `main` |
-| **Run ID / Run Number** | `43401819367` (Run `#9`, Attempt `#1`) |
-| **Run URL** | `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367` |
-| **Job ID & Name** | `131806279045` — `Secret Scan, Type Check, Test Suite & Build Integrity` |
-| **Job URL** | `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43401819367/job/131806279045` |
-| **Started / Completed** | `2026-11-13T09:30:06Z` → `2026-11-13T09:30:23Z` (`17s`) |
-| **Overall Status / Conclusion** | `completed` / **`success`** |
+| **Run ID / Run Number** | `43404302541` (Run `#10`, Attempt `#1`) |
+| **Run URL** | `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43404302541` |
+| **Job ID & Name** | `131814711194` — `Secret Scan, Type Check, Test Suite & Build Integrity` |
+| **Job URL** | `https://github.com/ranmasrangi-source/Master-plan-pro/actions/runs/43404302541/job/131814711194` |
+| **Started / Completed** | `2026-11-13T09:48:07Z` → `2026-11-13T09:48:25Z` (`18s`) |
+| **Overall Status / Conclusion** | `completed` / **`failure`** *(Steps 1–10 `success`; Step 11 `failure` because at `09:48 UTC` branch protection was still disabled)* |
 
 | Step # | Step Name | Command / Action | Status | Conclusion | Timestamps (UTC) |
 | :---: | :--- | :--- | :---: | :---: | :--- |
-| 1 | `Set up job` | Runner setup | `completed` | `success` | `09:30:07Z` → `09:30:07Z` |
-| 2 | `Checkout Repository` | `actions/checkout@v4` | `completed` | `success` | `09:30:07Z` → `09:30:09Z` |
-| 3 | `Setup Node.js 22 LTS` | `actions/setup-node@v4` (`cache: npm`, `package-lock.json`) | `completed` | `success` | `09:30:09Z` → `09:30:10Z` |
-| 4 | `Verify Single Lockfile (package-lock.json present, no bun.lock)` | `test -f package-lock.json && test ! -f bun.lock` | `completed` | `success` | `09:30:10Z` → `09:30:10Z` |
-| 5 | `Install Dependencies (Deterministic Clean Install)` | `npm ci` | `completed` | `success` | `09:30:10Z` → `09:30:17Z` |
-| 6 | `Step 1 — Secret & Constitutional Lock Scanner` | `npm run security:scan` (10 controlled pattern rules `SEC-SCAN-001..010`) | `completed` | `success` | `09:30:17Z` → `09:30:18Z` |
-| 7 | `Step 2 — Dependency Vulnerability Audit (npm audit)` | `npm run security:audit` (`npm audit --audit-level=low`) | `completed` | `success` | `09:30:18Z` → `09:30:18Z` |
-| 8 | `Step 3 — Strict TypeScript Verification (tsc --noEmit)` | `npm run lint` | `completed` | `success` | `09:30:18Z` → `09:30:19Z` |
-| 9 | `Step 4 — Automated Test Suite Execution` | `npm test` (`19/19` tests across 3 suites) | `completed` | `success` | `09:30:19Z` → `09:30:20Z` |
-| 10 | `Step 5 — Production Bundle & Build Integrity Check` | `npm run build` (`vite build`) | `completed` | `success` | `09:30:20Z` → `09:30:21Z` |
-| 11 | `Step 6 — Main Branch Protection Policy Audit (and Auto-Provision if Admin Token Present)` | `npm run security:branch-protection` | `completed` | `success` | `09:30:21Z` → `09:30:21Z` |
+| 1 | `Set up job` | Runner setup | `completed` | `success` | `09:48:08Z` → `09:48:09Z` |
+| 2 | `Checkout Repository` | `actions/checkout@v4` | `completed` | `success` | `09:48:09Z` → `09:48:11Z` |
+| 3 | `Setup Node.js 22 LTS` | `actions/setup-node@v4` (`cache: npm`, `package-lock.json`) | `completed` | `success` | `09:48:11Z` → `09:48:11Z` |
+| 4 | `Verify Single Lockfile (package-lock.json present, no bun.lock)` | `test -f package-lock.json && test ! -f bun.lock` | `completed` | `success` | `09:48:11Z` → `09:48:12Z` |
+| 5 | `Install Dependencies (Deterministic Clean Install)` | `npm ci` | `completed` | `success` | `09:48:12Z` → `09:48:19Z` |
+| 6 | `Step 1 — Secret & Constitutional Lock Scanner` | `npm run security:scan` (10 controlled pattern rules `SEC-SCAN-001..010`) | `completed` | `success` | `09:48:19Z` → `09:48:19Z` |
+| 7 | `Step 2 — Dependency Vulnerability Audit (npm audit)` | `npm run security:audit` (`npm audit --audit-level=low`) | `completed` | `success` | `09:48:19Z` → `09:48:20Z` |
+| 8 | `Step 3 — Strict TypeScript Verification (tsc --noEmit)` | `npm run lint` | `completed` | `success` | `09:48:20Z` → `09:48:21Z` |
+| 9 | `Step 4 — Automated Test Suite Execution` | `npm test` (`19/19` tests across 3 suites) | `completed` | `success` | `09:48:21Z` → `09:48:21Z` |
+| 10 | `Step 5 — Production Bundle & Build Integrity Check` | `npm run build` (`vite build`) | `completed` | `success` | `09:48:21Z` → `09:48:22Z` |
+| 11 | `Step 6 — Main Branch Protection Compliance Audit (Exits 1 if Non-Compliant)` | `npm run security:branch-protection` | `completed` | **`failure`** | `09:48:22Z` → `09:48:23Z` |
 
 ---
 
@@ -54,14 +67,14 @@ All statuses below use only the canonical audit classifications: **`PASS`**, **`
 
 | Finding ID | Severity | Finding Description | Status | Verifiable Evidence & Technical Justification |
 | :--- | :---: | :--- | :---: | :--- |
-| **AUD-01 / AUD-07** | **HIGH** | GitHub `main` branch protection is disabled (`protection.enabled: false`). Require PR review, status check `Secret Scan, Type Check, Test Suite & Build Integrity`, admin enforcement, force-push/deletion blocks, and make the compliance audit fail with a non-zero exit code when required protection is missing. | **`FAIL`** *(Remote GitHub Setting: `FAIL`; In-Repo Non-Zero Exit Enforcement: `PASS`)* | 1. **Live Remote Inspection:** `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/branches/main` returns `"protected": false`, `"protection": { "enabled": false, "required_status_checks": { "enforcement_level": "off", "contexts": [], "checks": [] } }`.<br>2. **Non-Zero Exit Enforcement Fixed (`/scripts/branch-protection.ts` & `/.github/workflows/ci-security-gate.yml`):** Removed the permissive warning-only fallback in `scripts/branch-protection.ts`. `npm run security:branch-protection` now **unconditionally exits with code `1` (`process.exit(1)`)** whenever `compliance.compliant === false`, verifying `protectionEnabled`, `required_status_checks` (`Secret Scan, Type Check, Test Suite & Build Integrity`), `required_pull_request_reviews`, `allow_force_pushes === false`, `allow_deletions === false`, and `enforce_admins === true`.<br>3. **Why Remote GitHub Still Shows `protected: false`:** The AI Studio container has zero GitHub authentication credentials (`GITHUB_ADMIN_TOKEN` / `BRANCH_PROTECTION_ADMIN_TOKEN` absent), and GitHub's `PUT /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection` endpoint requires an authenticated token from repository owner `ranmasrangi-source` with `Administration: Read and write` permission. |
-| **AUD-02 / AUD-08** | **HIGH** | Independently verify the latest remote `main` commit (`996fa9cd02e7c1d8d55c6c97352f65ef19d268fd`) and its exact GitHub Actions CI run (`43401819367`). | **`PASS`** | Verified via GitHub REST API: Remote `main` HEAD is `996fa9cd02e7c1d8d55c6c97352f65ef19d268fd` (Tree `e7d58162be76a1b37aa593d2291fa041196de9c1`), and GitHub Actions Run `43401819367` (Job `131806279045`) completed with `conclusion: "success"` across all 11 steps. |
+| **AUD-01 / AUD-07** | **HIGH** | Verify GitHub `main` branch protection (`protected: true`), exact status check `Secret Scan, Type Check, Test Suite & Build Integrity`, strict status checks, `>=1` PR approval, stale review dismissal, conversation resolution, admin enforcement, force-push/deletion blocks, and linear history; never report `COMPLIANT` when detailed settings are unverified. | **`UNVERIFIED`** *(Public Branch Protection & Required Check: **`PASS`**; 8 Detailed Settings on `/branches/main/protection`: **`UNVERIFIED`** without Admin Token; CLI Tri-State Enforcement: **`PASS`**)* | 1. **Current Live Remote Inspection:** `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/branches/main` now returns `"protected": true`, `"protection": { "enabled": true, "required_status_checks": { "enforcement_level": "everyone", "contexts": ["Secret Scan, Type Check, Test Suite & Build Integrity"], "checks": [{ "context": "Secret Scan, Type Check, Test Suite & Build Integrity", "app_id": 15368 }] } }`.<br>2. **Unverified Detailed Settings (`HTTP 401`):** `GET https://api.github.com/repos/ranmasrangi-source/Master-plan-pro/branches/main/protection` returns `HTTP 401 Requires authentication` when queried without `GITHUB_ADMIN_TOKEN` / `BRANCH_PROTECTION_ADMIN_TOKEN`.<br>3. **Tri-State (`PASS / FAIL / UNVERIFIED`) Enforcement (`/scripts/branch-protection.ts` & `/tests/infrastructure-phase03.test.ts`):** `evaluateBranchProtectionCompliance` evaluates all 10 required controls, never treats missing authentication or HTTP 401/403 as `PASS`, reports `status: 'UNVERIFIED'` (`compliant: false`), and exits with code `1`. |
+| **AUD-02 / AUD-08** | **HIGH** | Independently verify the latest remote `main` commit (`c4044b0bfce413af2157b9c91972013cd8f6c1a2`), historical CI Run `#10` (`43404302541`), and prior green CI Run `#9` (`43401819367`). | **`PASS`** | Verified via GitHub REST API: Remote `main` HEAD is `c4044b0bfce413af2157b9c91972013cd8f6c1a2` (Tree `70c16e8d509f04abe322635845cc44322f23f442`), Run `#10` (`43404302541`, Job `131814711194`) passed Steps 1–10 and failed at Step 11 when `protected` was `false`, and Run `#9` (`43401819367`, Job `131806279045`) completed with `conclusion: "success"`. |
 | **AUD-03 (Roadmap)** | **MEDIUM** | Clarify the authoritative 21-phase roadmap (`PHASE 01` through `PHASE 21`) without inventing or modifying phases. | **`PASS`** | Recorded in `/docs/22_CHANGE_CONTROL.md` (Section 2) and verified by automated test `INFRA-TEST-04 & AUD-03` in `tests/infrastructure-phase03.test.ts`. |
 | **AUD-03 (Portal)** | **HIGH** | Remove fake `VALID` responses in Credential Verification Portal; unknown IDs must return `404 NOT_FOUND`; preview fixture `0TO8848-CRED-2026-000108` must be labeled `DESIGN_PREVIEW_ONLY` (`isRealAchievement: false`). | **`PASS`** | Implemented in `src/components/credentials/OfficialCertificateView.tsx` (`lookupCredentialVerificationPortal`) and verified in `tests/server-security-remediation.test.ts` (Subtest 6) and `tests/ui-accessibility-i18n-phase04.test.ts` (Subtest 6). |
-| **AUD-04 (Hash Chain & Secret Scan)** | **HIGH** | Remove placeholder hashes from UI; recompute canonical SHA-256 digests; verify genesis, sequence, prevHash, currentHash, and payload tampering; expand secret scanner to 10 controlled pattern rules without false claims. | **`PASS`** | Implemented in `src/services/securityAndVerificationCore.ts`, `src/components/security/SecurityIncidentIntelligence.tsx`, and `scripts/security-scan.ts` (`SEC-SCAN-001..010`). Verified by `INFRA-TEST-01 & AUD-04`, `BUG-04 & AUD-04`, and `SEC-INT-TEST-01`. |
+| **AUD-04 (Hash Chain & Secret Scan)** | **HIGH** | Remove placeholder hashes from UI; recompute canonical SHA-256 digests; verify genesis, sequence, prevHash, currentHash, and payload tampering; label simulated security telemetry as preview/demo data; expand secret scanner to 10 controlled pattern rules. | **`PASS`** | Implemented in `src/services/securityAndVerificationCore.ts`, `src/components/security/SecurityIncidentIntelligence.tsx` (`IS_DEMONSTRATION_SECURITY_TELEMETRY = true`, `IS_LIVE_PRODUCTION_INCIDENT_FEED = false`), and `scripts/security-scan.ts` (`SEC-SCAN-001..010`). Verified by `INFRA-TEST-01 & AUD-04`, `BUG-04 & AUD-04`, and `SEC-INT-TEST-01`. |
 | **AUD-05 (Firewall & Scope Boundary)** | **HIGH** | Replace shallow denylist with deep recursive allowlist projection in `sanitizeCaseForReviewerFirewall`; keep Phase 04 / Phase 05 boundary explicit. | **`PASS`** | Implemented in `src/services/securityAndVerificationCore.ts` (`ALLOWED_REVIEWER_CASE_DTO_KEYS`, `ALLOWED_EVIDENCE_FILE_KEYS`, `ALLOWED_ECF_ASSESSMENT_KEYS`, `ALLOWED_ANTI_FRAUD_REPORT_KEYS`) and verified in `tests/server-security-remediation.test.ts` (Subtest 5: 16 top-level & nested commercial fields stripped, deeply frozen). |
-| **AUD-06 (CI Audit)** | **MEDIUM** | Execute deterministic `npm ci` and `npm audit --audit-level=low` in CI without error suppression. | **`PASS`** | Enforced in `package.json` (`"security:audit": "npm audit --audit-level=low"`) and `.github/workflows/ci-security-gate.yml` (Step 2). Verified locally (`found 0 vulnerabilities`) and in CI Run `43321202638`. |
-| **AUD-09 (Audit Docs)** | **MEDIUM** | Update `docs/22_CHANGE_CONTROL.md`, `docs/23_PHASE_ACCEPTANCE.md`, and `POST_CI_AUDIT_CLOSURE_REPORT.md` to record commit `e04d53cda6d921942d4360bba95028de2fc4ffad` and CI Run `43321202638`, distinguish Phase 04 from Phase 05+, and record pending Founder decisions. | **`PASS`** | Updated all three documents and verified via `npm test`. *(Note: Committing these documentation updates creates a new local commit on top of `e04d53cda6d921942d4360bba95028de2fc4ffad`).* |
+| **AUD-06 (CI Audit)** | **MEDIUM** | Execute deterministic `npm ci` and `npm audit --audit-level=low` in CI without error suppression. | **`PASS`** | Enforced in `package.json` (`"security:audit": "npm audit --audit-level=low"`) and `.github/workflows/ci-security-gate.yml` (Step 2). Verified locally (`found 0 vulnerabilities`) and in CI Run `43404302541`. |
+| **AUD-09 (Audit Docs)** | **MEDIUM** | Update `docs/22_CHANGE_CONTROL.md`, `docs/23_PHASE_ACCEPTANCE.md`, and `POST_CI_AUDIT_CLOSURE_REPORT.md` to distinguish previously observed configuration, current live API evidence, unverified detailed settings, and historical vs. current CI results. | **`PASS`** | Updated all three documents and verified via `npm test`. |
 | **AUD-10 (100 Destinations Validation)** | **MEDIUM** | Audit all 100 Featured Destinations (`DEST-001` to `DEST-100`). Keep uncertain fields marked `UNVERIFIED` in `unverified_fields`, do not invent verified trauma centers or SAR dispatch capabilities, keep all 100 marked `PROPOSED`, and provide the 100-destination validation matrix. | **`PASS`** | Updated `src/data/destinations100Catalog.ts` so every destination in `ALL_100_FEATURED_DESTINATIONS` remains `PROPOSED`, explicitly includes `nearest_trauma_center_field_verification` and `sar_dispatch_phone_and_heli_ceiling_field_verification` in `unverified_fields`, labels trauma center strings with `(UNVERIFIED — Pending Phase 09 Field Check)`, and is documented in Section 5 below. |
 
 ---
@@ -70,48 +83,25 @@ All statuses below use only the canonical audit classifications: **`PASS`**, **`
 
 | Capability / Component | Phase 04 Status (Current Repository State) | Future Implementation Phase (Approved 21-Phase Roadmap) |
 | :--- | :--- | :--- |
-| **Brand, UI/UX Design System, 3D/Vector Badges, Certificate Layout Preview, WCAG 2.2 AA Route Profile, Recharts Security Telemetry UI** | **Implemented as Client-Side React 19 UI Prototype** (`src/App.tsx`, `src/components/**`) | Connected to live backend endpoints in **Phases 07, 09, 12, 13, 16**. |
+| **Brand, UI/UX Design System, 3D/Vector Badges, Certificate Layout Preview, WCAG 2.2 AA Route Profile, Recharts Security Telemetry UI** | **Implemented as Client-Side React 19 UI Prototype with Simulated / Preview Data Disclosed** (`src/App.tsx`, `src/components/**`) | Connected to live backend endpoints in **Phases 07, 09, 12, 13, 16**. |
 | **100 Featured Destinations (`DEST-001` to `DEST-100`, Status: `PROPOSED`)** | **Implemented in Markdown (`docs/06_DESTINATION_CATALOGUE.md`) & Static TypeScript Catalog (`src/data/destinations100Catalog.ts`) with explicit `unverified_fields`** | Relational database seeding in **Phase 05**; field-by-field validation, route geometry & live SAR endpoints in **Phase 09**. |
-| **Pure TypeScript Security, RBAC/COI, 5-Pillar ECF, Anti-Fraud Math, Deep Allowlist Reviewer Firewall & SHA-256 Hash Chain Helpers** | **Implemented as Pure In-Memory TypeScript Functions** (`src/services/securityAndVerificationCore.ts`) | Wired into live Express/HTTP controllers, PostgreSQL transactions, and append-only audit tables in **Phases 05, 06, 11, 12, 16**. |
+| **Pure TypeScript Security, RBAC/COI, 5-Pillar ECF, Anti-Fraud Math, Deep Allowlist Reviewer Firewall & SHA-256 Hash Chain Helpers** | **Implemented as Pure In-Memory TypeScript Functions** (`src/services/securityAndVerificationCore.ts` — *not live production HTTP/DB services*) | Wired into live Express/HTTP controllers, PostgreSQL transactions, and append-only audit tables in **Phases 05, 06, 11, 12, 16**. |
 | **Constitutional Launch Lock Helper (`enforceConstitutionalEndpointGate` — `BUG-06`)** | **Pure TypeScript Function Normalizing Paths & Blocking `/api/v1/payments*`, `/api/v1/billing*`, `/api/v1/checkout*`, `/api/v1/subscriptions*`, `/api/v1/stripe*`, `/api/v1/blockchain*`, `/api/v1/web3*`, `/api/v1/nft*`, `/api/v1/mint*`, `/api/v1/soulbound*`** (returns `{ blocked: true, httpStatus: 403 }`; not live HTTP middleware in Phase 04) | Enforced as live server-side HTTP router middleware in **Phase 05 / Phase 17 / Phase 18**. |
-| **Database Schema (80 Schema Groups / 86 Physical Tables), Live Authentication/MFA, Binary Evidence Storage & Live Credential Registry** | **Specification & TypeScript Adapter Interfaces Only** (`docs/08_DATABASE_SCHEMA.md`, `src/adapters/*.ts`) | Implemented in **Phase 05** (DB), **Phase 06** (Auth/MFA), **Phase 11** (Evidence Storage), and **Phase 13** (Credential Registry). |
+| **Database Schema (80 Schema Groups / 86 Physical Tables), Live Authentication/MFA, Binary Evidence Storage & Live Credential Registry** | **Specification & TypeScript Adapter Interfaces Only** (`docs/08_DATABASE_SCHEMA.md`, `src/adapters/*.ts` — *zero live production database or auth service in Phase 04*) | Implemented in **Phase 05** (DB), **Phase 06** (Auth/MFA), **Phase 11** (Evidence Storage), and **Phase 13** (Credential Registry). |
 
 ---
 
-## 4. Exact Command for Founder to Enable Remote GitHub Branch Protection (`AUD-07`)
+## 4. Exact Action Required by Repository Owner (`ranmasrangi-source`) to Independently Verify All 8 Detailed Branch Protection Settings (`AUD-07`)
 
-Because GitHub requires repository owner (`ranmasrangi-source`) admin authentication to enable branch protection on `https://github.com/ranmasrangi-source/Master-plan-pro`, the Founder can enable it via any of the following three methods:
+Because `GET /repos/ranmasrangi-source/Master-plan-pro/branches/main` now confirms `"protected": true` and required status check `"Secret Scan, Type Check, Test Suite & Build Integrity"`, while `GET /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection` requires repository-owner (`ranmasrangi-source`) authentication (`Administration: Read` or `Read and write`), the repository owner can complete independent verification of the remaining 8 detailed settings via either of the following:
 
-1. **Method A — Run the repository script locally with a GitHub Admin PAT:**
+1. **Method A — Configure GitHub Actions Secret for Automated CI Verification:**
+   Add a repository secret named `BRANCH_PROTECTION_ADMIN_TOKEN` (Fine-Grained PAT with `Administration: Read` permission on `ranmasrangi-source/Master-plan-pro`) in `Settings -> Secrets and variables -> Actions`. Step 6 of `.github/workflows/ci-security-gate.yml` (`npm run security:branch-protection`) will authenticate `GET /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection` in read-only mode and verify all 10 controls as `PASS`.
+2. **Method B — Run the Read-Only Compliance Auditor Locally with a GitHub Admin Token:**
    ```bash
-   GITHUB_ADMIN_TOKEN="<YOUR_GITHUB_PAT_WITH_REPO_ADMIN>" npm run security:branch-protection -- --apply
+   GITHUB_ADMIN_TOKEN="<YOUR_GITHUB_PAT_WITH_ADMINISTRATION_READ>" npm run security:branch-protection
    ```
-2. **Method B — GitHub CLI (`gh`):**
-   ```bash
-   gh api --method PUT /repos/ranmasrangi-source/Master-plan-pro/branches/main/protection \
-     --input - << EOF
-   {
-     "required_status_checks": {
-       "strict": true,
-       "contexts": ["Secret Scan, Type Check, Test Suite & Build Integrity"]
-     },
-     "enforce_admins": true,
-     "required_pull_request_reviews": {
-       "dismiss_stale_reviews": true,
-       "require_code_owner_reviews": false,
-       "required_approving_review_count": 1
-     },
-     "restrictions": null,
-     "required_linear_history": true,
-     "allow_force_pushes": false,
-     "allow_deletions": false,
-     "block_creations": false,
-     "required_conversation_resolution": true
-   }
-   EOF
-   ```
-3. **Method C — Automatic via GitHub Actions Secret:**
-   Add a repository secret named `BRANCH_PROTECTION_ADMIN_TOKEN` (Fine-Grained PAT with `Administration: Read and write` permission) in `Settings -> Secrets and variables -> Actions`. Step 6 of `.github/workflows/ci-security-gate.yml` will automatically apply and verify the branch protection policy on the next workflow run.
+   *(Or, if any of the 8 detailed settings still need to be applied on GitHub, pass `--apply` explicitly with Founder authorization: `GITHUB_ADMIN_TOKEN="<YOUR_GITHUB_PAT_WITH_ADMINISTRATION_WRITE>" npm run security:branch-protection -- --apply`.)*
 
 ---
 

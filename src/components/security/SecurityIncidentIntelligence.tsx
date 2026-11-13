@@ -60,6 +60,11 @@ export const SECURITY_AUDIT_GENESIS_HASH: string = computeSha256Hex(
 
 export const SECURITY_AUDIT_GENESIS_SEQUENCE = 934;
 
+export const IS_DEMONSTRATION_SECURITY_TELEMETRY = true as const;
+export const IS_LIVE_PRODUCTION_INCIDENT_FEED = false as const;
+export const SECURITY_TELEMETRY_DISCLOSURE_BANNER =
+  'PHASE 04 UI DESIGN PROTOTYPE & DEMONSTRATION TELEMETRY — SIMULATED SEED EVENTS ONLY (NOT LIVE PRODUCTION SECURITY INCIDENTS)' as const;
+
 /**
  * AUD-04: Recomputes the FIPS 180-4 SHA-256 digest from the canonical event payload.
  * Any modification to summary, severity, targetResourceId, status, timestamp, sequence,
@@ -664,17 +669,31 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
       aria-labelledby="security-intelligence-heading"
       className="space-y-6"
     >
+      {/* Explicit Phase 04 Demonstration / Preview Telemetry Disclosure Banner */}
+      <div
+        role="note"
+        aria-label="Phase 04 Demonstration Security Telemetry Disclosure"
+        className="px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs font-mono"
+      >
+        <span className="text-amber-300 font-semibold">
+          {SECURITY_TELEMETRY_DISCLOSURE_BANNER}
+        </span>
+        <span className="text-neutral-300">
+          isLiveProductionIncidentFeed: false · Pure TS SHA-256 Chain Demo · Live Backend SIEM Deferred to Phase 05 / Phase 16
+        </span>
+      </div>
+
       {/* Section Header & Operational Controls */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 border-b border-neutral-800 pb-4">
         <div>
           <p className="text-xs uppercase tracking-widest text-[#C9A86A]">
-            05. CYBERSECURITY, FORENSIC ANTI-FRAUD & IMMUTABLE AUDIT LEDGER (DEPT-03 / DEPT-08 / DEPT-11)
+            05. CYBERSECURITY, FORENSIC ANTI-FRAUD &amp; AUDIT LEDGER PROTOTYPE (PHASE 04 DEMONSTRATION / PREVIEW DATA)
           </p>
           <h2
             id="security-intelligence-heading"
             className="text-2xl lg:text-3xl font-semibold text-white font-display mt-1"
           >
-            Security Incident Intelligence & Real-Time Audit Telemetry
+            Security Incident Intelligence &amp; Audit Chain Preview (Simulated Telemetry)
           </h2>
         </div>
 
@@ -689,7 +708,7 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
                 : 'bg-[#121212] text-neutral-200 border-neutral-700 hover:border-[#C9A86A]'
             }`}
           >
-            {liveStreamEnabled ? 'Pause Live Audit Stream' : 'Start Live Audit Stream'}
+            {liveStreamEnabled ? 'Pause Demo Audit Stream' : 'Start Demo Audit Stream'}
           </button>
 
           <button
@@ -697,7 +716,7 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
             onClick={() => injectSimulatedSecurityEvent()}
             className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#C9A86A] text-[#0A0A0A] hover:bg-[#FFD700] transition-colors whitespace-nowrap shrink-0"
           >
-            Simulate Forensic Trigger Event
+            Simulate Demo Forensic Trigger
           </button>
         </div>
       </div>
@@ -705,32 +724,32 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
       {/* Top Security & Hash-Chain KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 bg-[#121212] border border-neutral-800 rounded-xl">
-          <div className="text-xs text-neutral-400 font-mono">SHA-256 AUDIT HASH CHAIN</div>
+          <div className="text-xs text-neutral-400 font-mono">SHA-256 DEMO AUDIT HASH CHAIN</div>
           <div className="text-2xl font-bold text-emerald-400 font-mono tabular-nums mt-1">
             {chainIntegrity.isIntact ? '100% INTACT' : 'CHAIN BROKEN'}
           </div>
           <div className="text-xs text-neutral-400 mt-1 font-mono tabular-nums">
-            {chainIntegrity.verifiedLinksCount} chained events verified · Append-Only
+            {chainIntegrity.verifiedLinksCount} simulated seed events verified · Append-Only
           </div>
         </div>
 
         <div className="p-5 bg-[#121212] border border-neutral-800 rounded-xl">
-          <div className="text-xs text-neutral-400 font-mono">CRITICAL & HIGH TRIGGERS</div>
+          <div className="text-xs text-neutral-400 font-mono">SIMULATED CRITICAL &amp; HIGH TRIGGERS</div>
           <div className="text-2xl font-bold text-rose-400 font-mono tabular-nums mt-1">
             {criticalCount} Critical · {highCount} High
           </div>
           <div className="text-xs text-neutral-400 mt-1">
-            Signal-only flags routed to Human Investigators
+            Preview fixtures illustrating Human Investigator routing
           </div>
         </div>
 
         <div className="p-5 bg-[#121212] border border-neutral-800 rounded-xl">
-          <div className="text-xs text-neutral-400 font-mono">COMMERCIAL FIREWALL (SYS #12)</div>
+          <div className="text-xs text-neutral-400 font-mono">COMMERCIAL FIREWALL PREVIEW (SYS #12)</div>
           <div className="text-2xl font-bold text-[#FFD700] font-mono tabular-nums mt-1">
-            {firewallBlockCount} Blocked · 0 Leaked
+            {firewallBlockCount} Demo Blocked · 0 Leaked
           </div>
           <div className="text-xs text-neutral-400 mt-1">
-            Sponsor & paid fields stripped from Reviewer DTO
+            Pure TS allowlist projection demo (ReviewerCaseViewDTO)
           </div>
         </div>
 
@@ -748,15 +767,15 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
       {/* Graphical Analysis Section (Recharts Dual Chart Grid or Low-Bandwidth Tabular Fallback) */}
       {!lowBandwidthMode ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Chart: 24-Hour Real-Time Audit Ingestion & Forensic Anomaly Trend (Recharts AreaChart) */}
+          {/* Left Chart: 24-Hour Simulated Audit Ingestion & Forensic Anomaly Trend (Recharts AreaChart) */}
           <div className="lg:col-span-7 bg-[#121212] border border-neutral-800 rounded-xl p-6 flex flex-col justify-between">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-base font-semibold text-white font-display">
-                  Real-Time Audit Log Ingestion & Anomaly Trigger Velocity
+                  Simulated 24-Hour Audit Log Ingestion &amp; Anomaly Trigger Velocity (Preview)
                 </h3>
                 <p className="text-xs text-neutral-400">
-                  24-Hour rolling telemetry across Verification, Anti-Fraud, and Cybersecurity gates
+                  Demonstration time-series preview across Verification, Anti-Fraud, and Cybersecurity gates
                 </p>
               </div>
               <div className="flex items-center gap-4 text-xs font-mono">
@@ -915,6 +934,9 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
       <div className="p-6 bg-[#121212] border border-[#C9A86A]/40 rounded-xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
         <div className="lg:col-span-7 space-y-2">
           <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-semibold">
+              SIMULATED PREVIEW EVENT (NOT LIVE INCIDENT)
+            </span>
             <span className="text-[#FFD700] font-semibold">{selectedLogEntry.eventId}</span>
             <span>·</span>
             <span className="text-[#C9A86A]">{selectedLogEntry.triggerCode}</span>
@@ -924,7 +946,7 @@ export const SecurityIncidentIntelligence: React.FC<SecurityIncidentIntelligence
             <span className="text-emerald-400">{selectedLogEntry.status}</span>
           </div>
           <h3 className="text-lg font-semibold text-white font-display">
-            Target Resource: {selectedLogEntry.targetResourceId}
+            Simulated Target Resource: {selectedLogEntry.targetResourceId}
           </h3>
           <p className="text-xs text-neutral-300 leading-relaxed">
             {selectedLogEntry.summary}

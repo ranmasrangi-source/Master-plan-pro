@@ -218,3 +218,30 @@ export function formatBikramSambatDate(isoDateString: string): {
     isValidDate: true,
   };
 }
+
+/**
+ * Extracts a reliable YYYY-MM-DD UTC ISO date string from a runtime Date instance
+ * (with fallback to 2026-11-13 if an invalid Date object is supplied).
+ */
+export function getCurrentUtcIsoDateString(referenceDate: Date = new Date()): string {
+  const timeMs = referenceDate.getTime();
+  const safeDate = Number.isFinite(timeMs) ? referenceDate : new Date('2026-11-13T00:00:00Z');
+  const year = safeDate.getUTCFullYear();
+  const month = String(safeDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(safeDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns the formatted Gregorian (AD) and Bikram Sambat (वि.सं. BS) date object
+ * for the current runtime UTC date (or a caller-supplied Date instance).
+ */
+export function getCurrentBikramSambatDate(referenceDate: Date = new Date()): {
+  readonly gregorianIso: string;
+  readonly bikramSambatEn: string;
+  readonly bikramSambatDevanagari: string;
+  readonly isValidDate: boolean;
+} {
+  return formatBikramSambatDate(getCurrentUtcIsoDateString(referenceDate));
+}
+

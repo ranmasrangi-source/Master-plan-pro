@@ -16,7 +16,10 @@ import { EVEREST_SOUTH_COL_WAYPOINTS } from '../src/components/geospatial/Access
 import {
   INITIAL_SECURITY_AUDIT_LOGS,
   INITIAL_SECURITY_TIME_SERIES,
+  IS_DEMONSTRATION_SECURITY_TELEMETRY,
+  IS_LIVE_PRODUCTION_INCIDENT_FEED,
   SECURITY_AUDIT_GENESIS_HASH,
+  SECURITY_TELEMETRY_DISCLOSURE_BANNER,
   appendChainedSecurityAuditEvent,
   computeSecurityAuditEventPayloadHash,
   verifyAuditChainIntegrity,
@@ -28,7 +31,13 @@ import {
   PUBLIC_WEBSITE_42_PAGES,
   formatGeoCoordinates,
 } from '../src/data/designSystemCatalog.ts';
-import { TRANSLATIONS, formatBikramSambatDate, toDevanagariNumerals } from '../src/i18n/translations.ts';
+import {
+  TRANSLATIONS,
+  formatBikramSambatDate,
+  getCurrentBikramSambatDate,
+  getCurrentUtcIsoDateString,
+  toDevanagariNumerals,
+} from '../src/i18n/translations.ts';
 
 describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pages', () => {
   it('UI-TEST-01 (incl. BUG-04-03): All 42 Mandatory Public Website Pages (Section 19.1 to 19.42) are strictly typed with EN and Nepali Devanagari titles', () => {
@@ -92,6 +101,18 @@ describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pa
     assert.equal(invalidMonth.isValidDate, false);
     const invalidFebDay = formatBikramSambatDate('2026-02-30');
     assert.equal(invalidFebDay.isValidDate, false);
+
+    // Dynamic UTC date & Bikram Sambat conversion check
+    const fixedRefDate = new Date('2026-11-13T18:30:00Z');
+    assert.equal(getCurrentUtcIsoDateString(fixedRefDate), '2026-11-13');
+    const dynamicBs = getCurrentBikramSambatDate(fixedRefDate);
+    assert.equal(dynamicBs.isValidDate, true);
+    assert.equal(dynamicBs.gregorianIso, '2026-11-13');
+    assert.ok(dynamicBs.bikramSambatDevanagari.startsWith('वि.सं.'));
+
+    const runtimeNowBs = getCurrentBikramSambatDate();
+    assert.equal(runtimeNowBs.isValidDate, true);
+    assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(runtimeNowBs.gregorianIso));
   });
 
   it('A11Y-TEST-01, DEST-TEST-04 & BUG-04-04: Featured Destinations carry A6 data-hygiene fields, accurate N/S E/W hemisphere coordinates, SAR protocols, and Accessible Waypoints', () => {
@@ -114,7 +135,13 @@ describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pa
     assert.equal(EVEREST_SOUTH_COL_WAYPOINTS[6].elevationMeters, 8848.86);
   });
 
-  it('SEC-INT-TEST-01, BUG-04-01 & AUD-04: Security Incident Intelligence audit logs recompute canonical SHA-256 hashes, eliminate zero-padded fake hashes, and detect tampering', () => {
+  it('SEC-INT-TEST-01, BUG-04-01 & AUD-04: Security Incident Intelligence audit logs recompute canonical SHA-256 hashes, eliminate zero-padded fake hashes, detect tampering, and explicitly label simulated telemetry', () => {
+    assert.equal(IS_DEMONSTRATION_SECURITY_TELEMETRY, true);
+    assert.equal(IS_LIVE_PRODUCTION_INCIDENT_FEED, false);
+    assert.ok(
+      SECURITY_TELEMETRY_DISCLOSURE_BANNER.includes('SIMULATED SEED EVENTS ONLY'),
+      'Security telemetry disclosure banner must explicitly state SIMULATED SEED EVENTS ONLY'
+    );
     assert.ok(INITIAL_SECURITY_AUDIT_LOGS.length >= 8, 'Expected at least 8 initial security audit log records');
     assert.equal(INITIAL_SECURITY_TIME_SERIES.length, 7, 'Expected 7 24-hour time-series windows for Recharts analysis');
 

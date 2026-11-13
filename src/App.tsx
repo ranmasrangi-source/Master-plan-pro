@@ -26,7 +26,7 @@ import {
   PublicPageSpec,
   formatGeoCoordinates,
 } from './data/designSystemCatalog.ts';
-import { TRANSLATIONS, formatBikramSambatDate } from './i18n/translations.ts';
+import { TRANSLATIONS, getCurrentBikramSambatDate } from './i18n/translations.ts';
 import { CONSTITUTIONAL_LOCKS } from './types/constitution.ts';
 import { FeaturedDestination, MacroDomainId } from './types/taxonomy.ts';
 
@@ -109,7 +109,7 @@ export default function App() {
       ? ADVENTURE_CATEGORIES_24
       : ADVENTURE_CATEGORIES_24.filter((c) => c.macroDomainId === selectedDomain);
 
-  const todayBs = formatBikramSambatDate('2026-11-12');
+  const todayBs = getCurrentBikramSambatDate();
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col">

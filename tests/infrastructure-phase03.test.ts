@@ -172,45 +172,228 @@ describe('PHASE 03 — Development Infrastructure, Security Scan, Branch Protect
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.allow_force_pushes, false);
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.allow_deletions, false);
     assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.required_conversation_resolution, true);
+    assert.equal(CANONICAL_MAIN_BRANCH_PROTECTION_POLICY.required_linear_history, true);
 
-    const nonCompliantEval = evaluateBranchProtectionCompliance({
+    const validDetailed = {
+      strictStatusChecksEnabled: true,
+      requiredPullRequestReviewsEnabled: true,
+      requiredApprovingReviewCount: 1,
+      dismissStaleReviews: true,
+      enforceAdminsEnabled: true,
+      allowForcePushesEnabled: false,
+      allowDeletionsEnabled: false,
+      requiredConversationResolutionEnabled: true,
+      requiredLinearHistoryEnabled: true,
+    } as const;
+
+    // 1. Fully compliant configuration -> status: 'PASS', compliant: true
+    const compliantEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      authenticationProvided: true,
+      detailedProtectionHttpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: validDetailed,
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(compliantEval.status, 'PASS');
+    assert.equal(compliantEval.compliant, true);
+    assert.equal(compliantEval.failedChecks.length, 0);
+    assert.equal(compliantEval.unverifiedChecks.length, 0);
+    assert.equal(compliantEval.controlStates.branchProtectionEnabled, 'PASS');
+    assert.equal(compliantEval.controlStates.requiredStatusCheckPresent, 'PASS');
+    assert.equal(compliantEval.controlStates.strictStatusChecks, 'PASS');
+    assert.equal(compliantEval.controlStates.pullRequestApprovals, 'PASS');
+    assert.equal(compliantEval.controlStates.dismissStaleReviews, 'PASS');
+    assert.equal(compliantEval.controlStates.conversationResolution, 'PASS');
+    assert.equal(compliantEval.controlStates.adminEnforcement, 'PASS');
+    assert.equal(compliantEval.controlStates.forcePushesDisabled, 'PASS');
+    assert.equal(compliantEval.controlStates.branchDeletionsDisabled, 'PASS');
+    assert.equal(compliantEval.controlStates.linearHistoryRequired, 'PASS');
+
+    // 2. Missing administrative token (protectionEnabled=true, requiredCheckPresent=true, detailedSettings=null) -> status: 'UNVERIFIED', compliant: false
+    const missingTokenEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      authenticationProvided: false,
+      detailedProtectionHttpStatus: 401,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: null,
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(missingTokenEval.status, 'UNVERIFIED');
+    assert.equal(missingTokenEval.compliant, false);
+    assert.equal(missingTokenEval.controlStates.branchProtectionEnabled, 'PASS');
+    assert.equal(missingTokenEval.controlStates.requiredStatusCheckPresent, 'PASS');
+    assert.equal(missingTokenEval.controlStates.strictStatusChecks, 'UNVERIFIED');
+    assert.equal(missingTokenEval.controlStates.pullRequestApprovals, 'UNVERIFIED');
+    assert.equal(missingTokenEval.controlStates.adminEnforcement, 'UNVERIFIED');
+    assert.ok(missingTokenEval.unverifiedChecks.includes('MISSING_ADMINISTRATIVE_TOKEN'));
+    assert.ok(
+      missingTokenEval.unverifiedChecks.includes('DETAILED_PROTECTION_SETTINGS_UNVERIFIED')
+    );
+    assert.ok(
+      missingTokenEval.unverifiedChecks.includes(
+        'DETAILED_PROTECTION_API_PERMISSION_ERROR_HTTP_401'
+      )
+    );
+
+    // 3. API permission errors (HTTP 403 on detailed protection endpoint and HTTP 403 on branch endpoint) -> status: 'UNVERIFIED', compliant: false
+    const detailedForbiddenEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      authenticationProvided: true,
+      detailedProtectionHttpStatus: 403,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: null,
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(detailedForbiddenEval.status, 'UNVERIFIED');
+    assert.equal(detailedForbiddenEval.compliant, false);
+    assert.ok(
+      detailedForbiddenEval.unverifiedChecks.includes(
+        'DETAILED_PROTECTION_API_PERMISSION_ERROR_HTTP_403'
+      )
+    );
+
+    const branchApiForbiddenEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 403,
+      authenticationProvided: false,
+      detailedProtectionHttpStatus: null,
+      protectionEnabled: false,
+      requiredContexts: [],
+      detailedSettings: null,
+      rawProtectionObject: null,
+    });
+    assert.equal(branchApiForbiddenEval.status, 'UNVERIFIED');
+    assert.equal(branchApiForbiddenEval.compliant, false);
+    assert.ok(
+      branchApiForbiddenEval.unverifiedChecks.includes('BRANCH_API_PERMISSION_ERROR_HTTP_403')
+    );
+
+    // 4. Missing required status check -> status: 'FAIL', compliant: false
+    const missingStatusCheckEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [],
+      detailedSettings: validDetailed,
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(missingStatusCheckEval.status, 'FAIL');
+    assert.equal(missingStatusCheckEval.compliant, false);
+    assert.equal(missingStatusCheckEval.controlStates.requiredStatusCheckPresent, 'FAIL');
+    assert.deepEqual(missingStatusCheckEval.failedChecks, [
+      `MISSING_REQUIRED_STATUS_CHECK:${REQUIRED_CI_CHECK_CONTEXT}`,
+    ]);
+
+    // 5. Strict status checks disabled -> status: 'FAIL', compliant: false
+    const strictDisabledEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: { ...validDetailed, strictStatusChecksEnabled: false },
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(strictDisabledEval.status, 'FAIL');
+    assert.equal(strictDisabledEval.compliant, false);
+    assert.equal(strictDisabledEval.controlStates.strictStatusChecks, 'FAIL');
+    assert.deepEqual(strictDisabledEval.failedChecks, ['STRICT_STATUS_CHECKS_DISABLED']);
+
+    // 6. Admin enforcement disabled -> status: 'FAIL', compliant: false
+    const missingAdminEnforcementEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: { ...validDetailed, enforceAdminsEnabled: false },
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(missingAdminEnforcementEval.status, 'FAIL');
+    assert.equal(missingAdminEnforcementEval.compliant, false);
+    assert.equal(missingAdminEnforcementEval.controlStates.adminEnforcement, 'FAIL');
+    assert.deepEqual(missingAdminEnforcementEval.failedChecks, ['ADMIN_ENFORCEMENT_DISABLED']);
+
+    // 7. Force pushes enabled -> status: 'FAIL', compliant: false
+    const forcePushAllowedEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: { ...validDetailed, allowForcePushesEnabled: true },
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(forcePushAllowedEval.status, 'FAIL');
+    assert.equal(forcePushAllowedEval.compliant, false);
+    assert.equal(forcePushAllowedEval.controlStates.forcePushesDisabled, 'FAIL');
+    assert.deepEqual(forcePushAllowedEval.failedChecks, ['FORCE_PUSHES_NOT_BLOCKED']);
+
+    // 8. Branch deletions enabled -> status: 'FAIL', compliant: false
+    const deletionAllowedEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: { ...validDetailed, allowDeletionsEnabled: true },
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(deletionAllowedEval.status, 'FAIL');
+    assert.equal(deletionAllowedEval.compliant, false);
+    assert.equal(deletionAllowedEval.controlStates.branchDeletionsDisabled, 'FAIL');
+    assert.deepEqual(deletionAllowedEval.failedChecks, ['BRANCH_DELETIONS_NOT_BLOCKED']);
+
+    // 9. Missing PR approval requirement, stale review dismissal, conversation resolution, or linear history -> status: 'FAIL'
+    const missingPrReviewEval = evaluateBranchProtectionCompliance({
+      repository: 'ranmasrangi-source/Master-plan-pro',
+      branch: 'main',
+      httpStatus: 200,
+      protectionEnabled: true,
+      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
+      detailedSettings: {
+        ...validDetailed,
+        requiredApprovingReviewCount: 0,
+        dismissStaleReviews: false,
+        requiredConversationResolutionEnabled: false,
+        requiredLinearHistoryEnabled: false,
+      },
+      rawProtectionObject: { enabled: true },
+    });
+    assert.equal(missingPrReviewEval.status, 'FAIL');
+    assert.equal(missingPrReviewEval.compliant, false);
+    assert.equal(missingPrReviewEval.controlStates.pullRequestApprovals, 'FAIL');
+    assert.equal(missingPrReviewEval.controlStates.dismissStaleReviews, 'FAIL');
+    assert.equal(missingPrReviewEval.controlStates.conversationResolution, 'FAIL');
+    assert.equal(missingPrReviewEval.controlStates.linearHistoryRequired, 'FAIL');
+    assert.deepEqual(missingPrReviewEval.failedChecks, [
+      'PULL_REQUEST_REVIEWS_NOT_REQUIRED',
+      'STALE_REVIEWS_NOT_DISMISSED',
+      'CONVERSATION_RESOLUTION_NOT_REQUIRED',
+      'LINEAR_HISTORY_NOT_REQUIRED',
+    ]);
+
+    // 10. Branch protection completely disabled -> status: 'FAIL', compliant: false
+    const disabledProtectionEval = evaluateBranchProtectionCompliance({
       repository: 'ranmasrangi-source/Master-plan-pro',
       branch: 'main',
       httpStatus: 200,
       protectionEnabled: false,
       requiredContexts: [],
-      rawProtectionObject: { enabled: false },
-    });
-    assert.equal(nonCompliantEval.compliant, false);
-    assert.ok(nonCompliantEval.failedChecks.includes('PROTECTION_DISABLED_ON_REMOTE_MAIN'));
-
-    const compliantEval = evaluateBranchProtectionCompliance({
-      repository: 'ranmasrangi-source/Master-plan-pro',
-      branch: 'main',
-      httpStatus: 200,
-      protectionEnabled: true,
-      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
       detailedSettings: {
-        requiredPullRequestReviewsEnabled: true,
-        requiredApprovingReviewCount: 1,
-        dismissStaleReviews: true,
-        enforceAdminsEnabled: true,
-        allowForcePushesEnabled: false,
-        allowDeletionsEnabled: false,
-        requiredConversationResolutionEnabled: true,
-      },
-      rawProtectionObject: { enabled: true },
-    });
-    assert.equal(compliantEval.compliant, true);
-    assert.equal(compliantEval.failedChecks.length, 0);
-
-    const weakDetailedEval = evaluateBranchProtectionCompliance({
-      repository: 'ranmasrangi-source/Master-plan-pro',
-      branch: 'main',
-      httpStatus: 200,
-      protectionEnabled: true,
-      requiredContexts: [REQUIRED_CI_CHECK_CONTEXT],
-      detailedSettings: {
+        strictStatusChecksEnabled: false,
         requiredPullRequestReviewsEnabled: false,
         requiredApprovingReviewCount: 0,
         dismissStaleReviews: false,
@@ -218,15 +401,15 @@ describe('PHASE 03 — Development Infrastructure, Security Scan, Branch Protect
         allowForcePushesEnabled: true,
         allowDeletionsEnabled: true,
         requiredConversationResolutionEnabled: false,
+        requiredLinearHistoryEnabled: false,
       },
-      rawProtectionObject: { enabled: true },
+      rawProtectionObject: { enabled: false },
     });
-    assert.equal(weakDetailedEval.compliant, false);
-    assert.ok(weakDetailedEval.failedChecks.includes('PULL_REQUEST_REVIEWS_NOT_REQUIRED'));
-    assert.ok(weakDetailedEval.failedChecks.includes('FORCE_PUSHES_NOT_BLOCKED'));
-    assert.ok(weakDetailedEval.failedChecks.includes('BRANCH_DELETIONS_NOT_BLOCKED'));
-    assert.ok(weakDetailedEval.failedChecks.includes('ADMIN_ENFORCEMENT_DISABLED'));
+    assert.equal(disabledProtectionEval.status, 'FAIL');
+    assert.equal(disabledProtectionEval.compliant, false);
+    assert.ok(disabledProtectionEval.failedChecks.includes('PROTECTION_DISABLED_ON_REMOTE_MAIN'));
   });
 });
+
 
 
