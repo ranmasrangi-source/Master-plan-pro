@@ -41,6 +41,8 @@ import {
   ReviewerCaseViewDTO,
 } from '../types/verification.ts';
 import {
+  DecryptedUserProfileRecord,
+  EncryptedUserProfileInput,
   IDatabaseRepository,
   ITransactionContext,
   PortableInstitutionalSnapshot,
@@ -48,9 +50,23 @@ import {
 import {
   decryptEnvelopeAes256Gcm,
   encryptEnvelopeAes256Gcm,
+  resolveAndValidateEncryptionKeyHex,
 } from './PostgresDrizzleRepository.ts';
 
+interface StoredEncryptedUserRecord {
+  readonly userId: string;
+  readonly email: string;
+  readonly residencyRegion: 'NP' | 'EU' | 'UAE' | 'GLOBAL';
+  readonly displayName: string;
+  readonly countryCode: string;
+  readonly preferredLocale: 'en' | 'ne' | 'ar';
+  readonly privacyTier: 'TIER_4_REGULATED_PII';
+  readonly fullNameEncrypted: string;
+  readonly mfaSecretEncrypted: string | null;
+}
+
 interface InMemoryState {
+  encryptedUsers: Map<string, StoredEncryptedUserRecord>;
   accreditations: Map<string, ReviewerAccreditation>;
   orgMemberships: Map<string, Set<string>>; // userId -> Set<orgId>
   commercialBookings: Array<{ adventurerUserId: string; guideUserId: string }>;
@@ -64,7 +80,10 @@ interface InMemoryState {
 }
 
 export class InMemoryRelationalRepository implements IDatabaseRepository {
+  private readonly encryptionKeyHex: string;
+
   private state: InMemoryState = {
+    encryptedUsers: new Map(),
     accreditations: new Map(),
     orgMemberships: new Map(),
     commercialBookings: [],
@@ -77,8 +96,13 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
     governanceProposals: [],
   };
 
+  constructor(params?: { readonly encryptionKeyHex?: string }) {
+    this.encryptionKeyHex = resolveAndValidateEncryptionKeyHex(params?.encryptionKeyHex);
+  }
+
   private cloneState(): InMemoryState {
     return {
+      encryptedUsers: new Map(this.state.encryptedUsers),
       accreditations: new Map(this.state.accreditations),
       orgMemberships: new Map(
         Array.from(this.state.orgMemberships.entries()).map(([k, v]) => [k, new Set(v)])
@@ -107,6 +131,86 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
       this.state = snapshotBefore;
       throw error;
     }
+  }
+
+  async upsertUserWithEncryptedProfilePii(
+    input: EncryptedUserProfileInput,
+    _tx?: ITransactionContext
+  ): Promise<{
+    readonly userId: string;
+    readonly fullNameCiphertext: string;
+    readonly mfaSecretCiphertext: string | null;
+    readonly residencyRegion: 'NP' | 'EU' | 'UAE' | 'GLOBAL';
+  }> {
+    const fullNameAad = `${input.userId}|${input.residencyRegion}|TIER_4_REGULATED_PII|FULL_LEGAL_NAME`;
+    const fullNameEncrypted = encryptEnvelopeAes256Gcm(
+      input.fullNamePlaintext,
+      fullNameAad,
+      this.encryptionKeyHex
+    );
+
+    const mfaSecretEncrypted = input.mfaSecretPlaintext
+      ? encryptEnvelopeAes256Gcm(
+          input.mfaSecretPlaintext,
+          `${input.userId}|${input.residencyRegion}|TIER_4_REGULATED_PII|MFA_SECRET`,
+          this.encryptionKeyHex
+        )
+      : null;
+
+    this.state.encryptedUsers.set(input.userId, {
+      userId: input.userId,
+      email: input.email,
+      residencyRegion: input.residencyRegion,
+      displayName: input.displayName,
+      countryCode: input.countryCode,
+      preferredLocale: input.preferredLocale ?? 'en',
+      privacyTier: 'TIER_4_REGULATED_PII',
+      fullNameEncrypted,
+      mfaSecretEncrypted,
+    });
+
+    return {
+      userId: input.userId,
+      fullNameCiphertext: fullNameEncrypted,
+      mfaSecretCiphertext: mfaSecretEncrypted,
+      residencyRegion: input.residencyRegion,
+    };
+  }
+
+  async getUserWithDecryptedProfilePii(
+    userId: string
+  ): Promise<DecryptedUserProfileRecord | null> {
+    const stored = this.state.encryptedUsers.get(userId);
+    if (!stored) return null;
+
+    const fullNameAad = `${stored.userId}|${stored.residencyRegion}|TIER_4_REGULATED_PII|FULL_LEGAL_NAME`;
+    const fullNamePlaintext = decryptEnvelopeAes256Gcm(
+      stored.fullNameEncrypted,
+      fullNameAad,
+      this.encryptionKeyHex
+    );
+
+    const mfaSecretPlaintext = stored.mfaSecretEncrypted
+      ? decryptEnvelopeAes256Gcm(
+          stored.mfaSecretEncrypted,
+          `${stored.userId}|${stored.residencyRegion}|TIER_4_REGULATED_PII|MFA_SECRET`,
+          this.encryptionKeyHex
+        )
+      : null;
+
+    return {
+      userId: stored.userId,
+      email: stored.email,
+      residencyRegion: stored.residencyRegion,
+      displayName: stored.displayName,
+      countryCode: stored.countryCode,
+      preferredLocale: stored.preferredLocale,
+      privacyTier: 'TIER_4_REGULATED_PII',
+      fullNamePlaintext,
+      fullNameCiphertext: stored.fullNameEncrypted,
+      mfaSecretPlaintext,
+      mfaSecretCiphertext: stored.mfaSecretEncrypted,
+    };
   }
 
   seedAccreditation(acc: ReviewerAccreditation): void {
@@ -242,10 +346,15 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
   async getSanitizedCaseForReviewer(caseId: string): Promise<ReviewerCaseViewDTO | null> {
     const c = this.state.cases.get(caseId);
     if (!c) return null;
-    return sanitizeCaseForReviewerFirewall(c).sanitizedDto;
+    return sanitizeCaseForReviewerFirewall(
+      c as unknown as Record<string, unknown> & ReviewerCaseViewDTO
+    ).sanitizedDto;
   }
 
-  async recordEcfOverride(record: EcfOverrideAuditRecord): Promise<void> {
+  async recordEcfOverride(
+    record: EcfOverrideAuditRecord,
+    _tx?: ITransactionContext
+  ): Promise<void> {
     this.state.ecfOverrides.push(record);
   }
 
@@ -259,7 +368,10 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
     return this.state.publicCredentials.get(credentialId) ?? null;
   }
 
-  async appendCredentialRegistryRecord(record: CredentialRegistryRecord): Promise<void> {
+  async appendCredentialRegistryRecord(
+    record: CredentialRegistryRecord,
+    _tx?: ITransactionContext
+  ): Promise<void> {
     const dest = ALL_100_FEATURED_DESTINATIONS.find((d) => d.destinationId === record.destinationId);
     this.state.credentials.push(record);
     this.state.publicCredentials.set(record.credentialId, {
@@ -332,7 +444,10 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
     return { receiptCodeHash: report.anonymousReceiptCodeHash };
   }
 
-  async createGovernanceProposal(proposal: GovernanceQuorumProposal): Promise<void> {
+  async createGovernanceProposal(
+    proposal: GovernanceQuorumProposal,
+    _tx?: ITransactionContext
+  ): Promise<void> {
     this.state.governanceProposals.push(proposal);
   }
 
@@ -341,6 +456,7 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
     const schemaVersion = 'v1.1.0-phase05-86tables';
     const exportedAtIso = new Date().toISOString();
     const totalRecordsCount =
+      this.state.encryptedUsers.size +
       this.state.credentials.length +
       this.state.ecfOverrides.length +
       this.state.whistleblowerReports.length +
@@ -351,6 +467,7 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
     const payloadJson = JSON.stringify({
       snapshotId,
       schemaVersion,
+      encryptedUsers: Array.from(this.state.encryptedUsers.entries()),
       credentials: this.state.credentials,
       ecfOverrides: this.state.ecfOverrides,
       whistleblowerReports: this.state.whistleblowerReports,
@@ -368,7 +485,8 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
 
     const encryptedPayloadBase64 = encryptEnvelopeAes256Gcm(
       payloadJson,
-      `${snapshotId}|${sha256ManifestHash}`
+      `${snapshotId}|${sha256ManifestHash}`,
+      this.encryptionKeyHex
     );
 
     return {
@@ -390,7 +508,8 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
   }> {
     const decrypted = decryptEnvelopeAes256Gcm(
       snapshot.encryptedPayloadBase64,
-      `${snapshot.snapshotId}|${snapshot.sha256ManifestHash}`
+      `${snapshot.snapshotId}|${snapshot.sha256ManifestHash}`,
+      this.encryptionKeyHex
     );
 
     const recomputed = computeSha256Hex(
@@ -406,11 +525,52 @@ export class InMemoryRelationalRepository implements IDatabaseRepository {
       throw new Error('SNAPSHOT_MANIFEST_SHA256_MISMATCH');
     }
 
-    const chain = await this.verifyRegistryHashChain();
-    return {
-      restoredRecordsCount: snapshot.totalRecordsCount,
-      manifestVerified: true,
-      hashChainIntact: chain.intact,
+    const parsedPayload = JSON.parse(decrypted) as {
+      encryptedUsers?: Array<[string, StoredEncryptedUserRecord]>;
+      credentials?: CredentialRegistryRecord[];
+      ecfOverrides?: EcfOverrideAuditRecord[];
+      whistleblowerReports?: WhistleblowerReport[];
+      governanceProposals?: GovernanceQuorumProposal[];
     };
+
+    return this.withTransaction(async (tx) => {
+      this.state.encryptedUsers = new Map(parsedPayload.encryptedUsers ?? []);
+      this.state.credentials = [];
+      this.state.publicCredentials = new Map();
+      for (const cred of parsedPayload.credentials ?? []) {
+        await this.appendCredentialRegistryRecord(cred, tx);
+      }
+      this.state.ecfOverrides = [...(parsedPayload.ecfOverrides ?? [])];
+      this.state.whistleblowerReports = [...(parsedPayload.whistleblowerReports ?? [])];
+      this.state.governanceProposals = [...(parsedPayload.governanceProposals ?? [])];
+
+      const restoredRecordsCount =
+        this.state.encryptedUsers.size +
+        this.state.credentials.length +
+        this.state.ecfOverrides.length +
+        this.state.whistleblowerReports.length +
+        this.state.governanceProposals.length +
+        ALL_100_FEATURED_DESTINATIONS.length +
+        ADVENTURE_CATEGORIES_24.length;
+
+      if (restoredRecordsCount !== snapshot.totalRecordsCount) {
+        throw new Error(
+          `SNAPSHOT_RESTORE_RECORD_COUNT_MISMATCH: expected=${snapshot.totalRecordsCount}, actual=${restoredRecordsCount}`
+        );
+      }
+
+      const chain = await this.verifyRegistryHashChain();
+      if (!chain.intact) {
+        throw new Error(
+          `SNAPSHOT_RESTORE_HASH_CHAIN_BROKEN:${chain.brokenAtCredentialId ?? 'UNKNOWN'}`
+        );
+      }
+
+      return {
+        restoredRecordsCount,
+        manifestVerified: true,
+        hashChainIntact: chain.intact,
+      };
+    });
   }
 }

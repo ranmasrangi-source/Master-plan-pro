@@ -2,7 +2,7 @@ name: 0 TO 8848 — CI, Security & Constitutional Gate
 
 on:
   push:
-    branches: [main, staging, develop]
+    branches: [main, staging, develop, 'fix/**']
   pull_request:
     branches: [main, staging, develop]
 
@@ -13,6 +13,22 @@ jobs:
   constitutional-and-security-gate:
     name: Secret Scan, Type Check, Test Suite & Build Integrity
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_pg_password
+          POSTGRES_DB: zero_to_8848_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d zero_to_8848_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -39,7 +55,13 @@ jobs:
       - name: Step 3 — Strict TypeScript Verification (tsc --noEmit)
         run: npm run lint
 
-      - name: Step 4 — Automated Test Suite Execution
+      - name: Step 4 — Automated Test Suite Execution (Real PostgreSQL 16 Service Container)
+        env:
+          SQL_HOST: 127.0.0.1
+          SQL_PORT: '5432'
+          SQL_USER: postgres
+          SQL_PASSWORD: ci_ephemeral_pg_password
+          SQL_DB_NAME: zero_to_8848_ci
         run: npm test
 
       - name: Step 5 — Production Bundle & Build Integrity Check
@@ -49,4 +71,3 @@ jobs:
         env:
           BRANCH_PROTECTION_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECTION_ADMIN_TOKEN }}
         run: npm run security:branch-protection
-

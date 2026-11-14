@@ -3,43 +3,55 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 0 TO 8848 — Phase 05 Database Architecture, Security Roles, Triggers & Persistence Suite
- * Executes DB-TEST-01 through DB-TEST-12 against a real PostgreSQL 16 engine (@electric-sql/pglite)
+ * Executes DB-TEST-01 through DB-TEST-12 against a real PostgreSQL 16 engine
+ * (connecting via node-postgres pg.Pool when SQL_HOST/DATABASE_URL is configured, or PGlite locally)
  * with Drizzle ORM, testing all 86 physical tables, 7-tier FK DAG, append-only triggers (SQLSTATE 42501),
  * departmental RBAC role isolation, governance quorum enforcement, AES-256-GCM privacy controls,
- * backup/restore verification, and IDatabaseRepository adapter portability.
+ * atomic backup/restore verification into a clean database, and IDatabaseRepository adapter portability.
  */
 
 import assert from 'node:assert/strict';
-import { before, describe, it } from 'node:test';
-import type { PGlite } from '@electric-sql/pglite';
-import type { PgliteDatabase } from 'drizzle-orm/pglite';
-import { createPhase05ExpressApp } from '../server.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import { after, before, describe, it } from 'node:test';
+import { createPhase05ExpressApp, initializePhase05Repository } from '../server.ts';
 import type { IDatabaseRepository } from '../src/adapters/IDatabaseRepository.ts';
 import { InMemoryRelationalRepository } from '../src/adapters/InMemoryRelationalRepository.ts';
 import {
   PostgresDrizzleRepository,
   decryptEnvelopeAes256Gcm,
   encryptEnvelopeAes256Gcm,
+  resolveAndValidateEncryptionKeyHex,
 } from '../src/adapters/PostgresDrizzleRepository.ts';
 import {
   ALL_86_PHYSICAL_TABLE_NAMES,
   ALLOWED_DEPARTMENT_DB_ROLES,
   IMMUTABLE_APPEND_ONLY_TABLES,
+  type ISqlExecutor,
   applyPhase05Migrations,
   createEmbeddedPostgresEngine,
   createPool,
   executeWithDepartmentRole,
+  resolveDatabaseEngine,
   seedPhase05Database,
+  validateProductionDatabaseConfig,
 } from '../src/db/index.ts';
-import type * as schema from '../src/db/schema.ts';
 import {
   GENESIS_AUDIT_BLOCK_HASH,
   appendCryptographicAuditRecord,
   computeSha256Hex,
+  encodeCanonicalHashFields,
   verifyCryptographicAuditChainDetailed,
 } from '../src/services/securityAndVerificationCore.ts';
 import { GovernanceDepartmentId, PlatformRole } from '../src/types/constitution.ts';
 import { CredentialValidityStatus } from '../src/types/credentials.ts';
+
+/**
+ * Ephemeral runtime-derived 256-bit test key (64 hex chars) used exclusively for automated test execution.
+ */
+const EPHEMERAL_TEST_ENCRYPTION_KEY_HEX = computeSha256Hex(
+  '0TO8848_EPHEMERAL_TEST_ONLY_AES256_KEY_MATERIAL_PHASE05'
+);
 
 /**
  * Helper that asserts a PostgreSQL query fails with a specific 5-character SQLSTATE code
@@ -73,29 +85,128 @@ async function assertPgSqlState(
 }
 
 describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles & Append-Only Ledger Suite (DB-TEST-01..12)', () => {
-  let pglite: PGlite;
-  let db: PgliteDatabase<typeof schema>;
+  let sqlExecutor: ISqlExecutor;
   let pgRepo: PostgresDrizzleRepository;
+  let closeActiveEngine: () => Promise<void>;
+  let activeEngineType: 'node-postgres' | 'pglite';
 
   before(async () => {
-    const engine = await createEmbeddedPostgresEngine();
-    pglite = engine.pglite;
-    db = engine.db;
-    await applyPhase05Migrations(pglite);
-    await seedPhase05Database(db);
-    pgRepo = new PostgresDrizzleRepository({ db, pglite });
+    const engine = await resolveDatabaseEngine({
+      nodeEnv: process.env.NODE_ENV,
+      env: process.env,
+    });
+    sqlExecutor = engine.sqlExecutor;
+    activeEngineType = engine.engineType;
+    closeActiveEngine = () => engine.sqlExecutor.close();
+
+    await applyPhase05Migrations(sqlExecutor);
+    await seedPhase05Database(engine.db);
+
+    pgRepo = engine.pool
+      ? PostgresDrizzleRepository.fromPgPool(engine.pool, EPHEMERAL_TEST_ENCRYPTION_KEY_HEX)
+      : new PostgresDrizzleRepository({
+          db: engine.db,
+          sqlExecutor: engine.sqlExecutor,
+          encryptionKeyHex: EPHEMERAL_TEST_ENCRYPTION_KEY_HEX,
+        });
   });
 
-  it('DB-TEST-01: Database Connection, Pool Configuration (Object Method) & Constitutional System Settings Locks', async () => {
+  after(async () => {
+    if (closeActiveEngine) {
+      await closeActiveEngine();
+    }
+  });
+
+  it('DB-TEST-01 (incl. BUG-01, BUG-02, BUG-04): Production Fail-Closed Database & Key Validation, Pool Configuration & Constitutional System Settings Locks', async () => {
     // 1. Verify pg.Pool factory uses the Object Method without startup connection loops
-    const pool = createPool();
+    const pool = createPool({ host: '127.0.0.1', port: 5432 });
     assert.equal(typeof pool.query, 'function');
+    await pool.end();
 
-    // 2. Verify live PostgreSQL 16 engine connection and system_settings constitutional locks (#81)
-    const pingRes = await pglite.query<{ one: number }>('SELECT 1 AS one');
-    assert.equal(pingRes.rows[0].one, 1);
+    // 2. BUG-01 Regression: Production mode (NODE_ENV === 'production') MUST fail closed when PostgreSQL config is missing
+    assert.throws(
+      () => validateProductionDatabaseConfig({ NODE_ENV: 'production' }),
+      /FATAL_PRODUCTION_DB_CONFIG_MISSING/
+    );
+    await assert.rejects(
+      async () =>
+        resolveDatabaseEngine({
+          nodeEnv: 'production',
+          env: { NODE_ENV: 'production' },
+        }),
+      /FATAL_PRODUCTION_DB_CONFIG_MISSING/
+    );
+    await assert.rejects(
+      async () =>
+        initializePhase05Repository({
+          nodeEnv: 'production',
+          env: { NODE_ENV: 'production' },
+          encryptionKeyHex: EPHEMERAL_TEST_ENCRYPTION_KEY_HEX,
+        }),
+      /FATAL_PRODUCTION_DB_CONFIG_MISSING/
+    );
 
-    const settingsRes = await pglite.query<{
+    // 3. BUG-02 Regression: Missing, malformed, or low-entropy default encryption keys MUST fail closed
+    const savedEnvKey = process.env.DATA_ENCRYPTION_KEY_HEX;
+    delete process.env.DATA_ENCRYPTION_KEY_HEX;
+    try {
+      assert.throws(
+        () => resolveAndValidateEncryptionKeyHex(undefined),
+        /ENCRYPTION_KEY_MISSING_OR_INVALID/
+      );
+      assert.throws(
+        () => resolveAndValidateEncryptionKeyHex(''),
+        /ENCRYPTION_KEY_MISSING_OR_INVALID/
+      );
+      assert.throws(
+        () => resolveAndValidateEncryptionKeyHex('short_key'),
+        /ENCRYPTION_KEY_MISSING_OR_INVALID/
+      );
+      assert.throws(
+        () =>
+          resolveAndValidateEncryptionKeyHex(
+            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+          ),
+        /ENCRYPTION_KEY_MISSING_OR_INVALID/
+      );
+      assert.throws(
+        () => resolveAndValidateEncryptionKeyHex('f'.repeat(64)),
+        /ENCRYPTION_KEY_MISSING_OR_INVALID/
+      );
+    } finally {
+      if (savedEnvKey !== undefined) {
+        process.env.DATA_ENCRYPTION_KEY_HEX = savedEnvKey;
+      }
+    }
+
+    // 4. BUG-04 Regression: Verify PostgresDrizzleRepository.ts has zero PGlite imports and exposes fromPgPool
+    const adapterSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/adapters/PostgresDrizzleRepository.ts'),
+      'utf8'
+    );
+    assert.equal(
+      adapterSource.includes('@electric-sql/pglite'),
+      false,
+      'PostgresDrizzleRepository.ts must not import @electric-sql/pglite'
+    );
+    assert.equal(
+      adapterSource.includes('drizzle-orm/pglite'),
+      false,
+      'PostgresDrizzleRepository.ts must not import drizzle-orm/pglite'
+    );
+    assert.equal(
+      adapterSource.includes('DEFAULT_SNAPSHOT_KEY_HEX'),
+      false,
+      'PostgresDrizzleRepository.ts must not contain hardcoded DEFAULT_SNAPSHOT_KEY_HEX'
+    );
+    assert.equal(typeof PostgresDrizzleRepository.fromPgPool, 'function');
+
+    // 5. Verify live PostgreSQL 16 engine connection and system_settings constitutional locks (#81)
+    assert.ok(activeEngineType === 'node-postgres' || activeEngineType === 'pglite');
+    const pingRes = await sqlExecutor.query<{ one: number }>('SELECT 1 AS one');
+    assert.equal(Number(pingRes.rows[0].one), 1);
+
+    const settingsRes = await sqlExecutor.query<{
       setting_key: string;
       setting_value_json: { value: unknown };
       is_constitutional_lock: boolean;
@@ -120,7 +231,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
   it('DB-TEST-02: 7-Tier Migration Execution (86 Physical Tables) & Transactional DDL Rollback Verification', async () => {
     // 1. Verify exactly 86 physical base tables exist in public schema
     assert.equal(ALL_86_PHYSICAL_TABLE_NAMES.length, 86);
-    const tablesRes = await pglite.query<{ table_name: string }>(
+    const tablesRes = await sqlExecutor.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
     );
     assert.equal(
@@ -139,17 +250,19 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     }
 
     // 2. Verify transactional DDL rollback on simulated mid-migration failure leaves zero partial tables
-    const tempEngine = await createEmbeddedPostgresEngine();
-    await assert.rejects(async () => {
-      await tempEngine.pglite.exec(`
-        BEGIN;
-        CREATE TABLE temp_partial_migration_test (id varchar(64) PRIMARY KEY);
-        SELECT * FROM non_existent_table_causing_ddl_abort;
-        COMMIT;
-      `);
-    });
-    await tempEngine.pglite.exec('ROLLBACK;');
-    const partialCheck = await tempEngine.pglite.query<{ cnt: string }>(
+    await sqlExecutor.exec('BEGIN');
+    try {
+      await sqlExecutor.exec(
+        'CREATE TABLE public.temp_partial_migration_test (id varchar(64) PRIMARY KEY)'
+      );
+      await assert.rejects(async () => {
+        await sqlExecutor.exec('SELECT * FROM public.non_existent_table_causing_ddl_abort');
+      });
+    } finally {
+      await sqlExecutor.exec('ROLLBACK');
+    }
+
+    const partialCheck = await sqlExecutor.query<{ cnt: string }>(
       `SELECT COUNT(*)::text AS cnt FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'temp_partial_migration_test'`
     );
     assert.equal(
@@ -157,12 +270,11 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       0,
       'Failed transactional DDL migration must roll back completely with 0 partial tables'
     );
-    await tempEngine.pglite.close();
   });
 
   it('DB-TEST-03: Foreign Key Referential Integrity & ON DELETE RESTRICT Enforcement Across All 7 DAG Tiers', async () => {
     // Seed a complete chain across Tiers 1 -> 2 -> 3 -> 4 -> 5 to test ON DELETE RESTRICT
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.users (id, email, password_hash, account_status, residency_region)
       VALUES
         ('USR-FK-APPLICANT', 'applicant.fk@0to8848.org', 'argon2id$hash1', 'ACTIVE', 'NP'),
@@ -213,14 +325,14 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
 
     // 1. Attempting to DELETE a referenced user must fail with SQLSTATE 23503 (foreign_key_violation)
     await assertPgSqlState(
-      () => pglite.query(`DELETE FROM public.users WHERE id = 'USR-FK-APPLICANT'`),
+      () => sqlExecutor.query(`DELETE FROM public.users WHERE id = 'USR-FK-APPLICANT'`),
       '23503',
       'ON DELETE RESTRICT on users referenced by achievement_applications/credential_registry'
     );
 
     // 2. Attempting to DELETE a referenced destination (DEST-001) must fail with SQLSTATE 23503
     await assertPgSqlState(
-      () => pglite.query(`DELETE FROM public.destinations WHERE destination_id = 'DEST-001'`),
+      () => sqlExecutor.query(`DELETE FROM public.destinations WHERE destination_id = 'DEST-001'`),
       '23503',
       'ON DELETE RESTRICT on destinations referenced by destination_routes and achievement_applications'
     );
@@ -228,7 +340,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 3. Attempting to DELETE a referenced achievement_application must fail with SQLSTATE 23503
     await assertPgSqlState(
       () =>
-        pglite.query(
+        sqlExecutor.query(
           `DELETE FROM public.achievement_applications WHERE application_id = 'APP-FK-001'`
         ),
       '23503',
@@ -237,7 +349,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
 
     // 4. Attempting to DELETE a referenced verification_case must fail with SQLSTATE 23503
     await assertPgSqlState(
-      () => pglite.query(`DELETE FROM public.verification_cases WHERE case_id = 'CASE-FK-001'`),
+      () => sqlExecutor.query(`DELETE FROM public.verification_cases WHERE case_id = 'CASE-FK-001'`),
       '23503',
       'ON DELETE RESTRICT on verification_cases referenced by credential_registry'
     );
@@ -260,18 +372,18 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 2. Verify composite unique constraints on verification_assignments (#38):
     // uq_verification_assignments_case_slot (case_id, reviewer_slot) &
     // uq_verification_assignments_case_reviewer (case_id, reviewer_user_id)
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.verification_assignments (
         assignment_id, case_id, reviewer_user_id, reviewer_slot, coi_check_passed, coi_declaration_signed_at
       ) VALUES (
         'ASG-001', 'CASE-FK-001', 'USR-FK-REVIEWER-1', 'PRIMARY', TRUE, NOW()
-      );
+      ) ON CONFLICT (assignment_id) DO NOTHING;
     `);
 
     // Duplicate slot on same case -> SQLSTATE 23505 (unique_violation)
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.verification_assignments (
             assignment_id, case_id, reviewer_user_id, reviewer_slot, coi_check_passed, coi_declaration_signed_at
           ) VALUES (
@@ -285,7 +397,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // Same reviewer assigned to both PRIMARY and CO_SIGNER_SENIOR on same case -> SQLSTATE 23505
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.verification_assignments (
             assignment_id, case_id, reviewer_user_id, reviewer_slot, coi_check_passed, coi_declaration_signed_at
           ) VALUES (
@@ -299,7 +411,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 3. Verify CHECK constraint: evidence_confidence_assessments 5-pillar sum must match total_confidence_score (SQLSTATE 23514)
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.evidence_confidence_assessments (
             assessment_id, application_id, pil01_visual_score, pil02_telemetry_score,
             pil03_documentary_score, pil04_witness_score, pil05_chronology_score,
@@ -316,7 +428,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 4. Verify CHECK constraint: badges.is_free_standard = TRUE (SQLSTATE 23514)
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.badges (
             badge_id, destination_id, achievement_id, name_en, name_ne, shield_design_spec_json, is_free_standard
           ) VALUES (
@@ -330,7 +442,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 5. Verify CHECK constraint: ai_audit_logs cannot set can_approve_or_reject_achievement = TRUE (SQLSTATE 23514)
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.ai_audit_logs (
             audit_id, provider_name, model_version, task_type, input_sha256,
             requires_human_review, can_approve_or_reject_achievement
@@ -346,7 +458,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
 
   it('DB-TEST-05: ACID Transaction Atomicity, Rollback on Partial Failure & SELECT ... FOR UPDATE NOWAIT Locking', async () => {
     // 1. Seed a secondary application & case for transactional credential issuance rollback test
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.achievement_applications (
         application_id, applicant_user_id, category_id, achievement_id, destination_id, route_id,
         attempt_start_date, attempt_completion_date, date_calendar_system, lnt_self_score,
@@ -383,6 +495,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
             issuedAtIso: '2026-11-14T01:00:00.000Z',
             issuingAuthority: '0 TO 8848 Independent Verification Department',
             status: CredentialValidityStatus.VALID,
+            nonTransferable: true,
             previousEventHash: computeSha256Hex('0TO8848-CRED-2026-000501'),
             currentCredentialHash: computeSha256Hex(abortedCredId),
             policyVersion: 'v1.1.0',
@@ -400,8 +513,9 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       'Rolled-back transaction must leave zero orphan rows in public_credentials / credential_registry'
     );
 
-    const checkAbortedEvent = await pglite.query<{ cnt: string }>(
-      `SELECT COUNT(*)::text AS cnt FROM public.credential_lifecycle_events WHERE credential_id = '${abortedCredId}'`
+    const checkAbortedEvent = await sqlExecutor.query<{ cnt: string }>(
+      `SELECT COUNT(*)::text AS cnt FROM public.credential_lifecycle_events WHERE credential_id = $1`,
+      [abortedCredId]
     );
     assert.equal(
       Number(checkAbortedEvent.rows[0].cnt),
@@ -410,13 +524,18 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     );
 
     // 2. Verify PostgreSQL SELECT ... FOR UPDATE NOWAIT row locking executes cleanly inside a transaction
-    await pglite.exec('BEGIN;');
-    const lockedCase = await pglite.query<{ case_id: string; status: string }>(
-      `SELECT case_id, status FROM public.verification_cases WHERE case_id = 'CASE-FK-001' FOR UPDATE NOWAIT`
-    );
-    assert.equal(lockedCase.rows.length, 1);
-    assert.equal(lockedCase.rows[0].case_id, 'CASE-FK-001');
-    await pglite.exec('COMMIT;');
+    await sqlExecutor.exec('BEGIN');
+    try {
+      const lockedCase = await sqlExecutor.query<{ case_id: string; status: string }>(
+        `SELECT case_id, status FROM public.verification_cases WHERE case_id = 'CASE-FK-001' FOR UPDATE NOWAIT`
+      );
+      assert.equal(lockedCase.rows.length, 1);
+      assert.equal(lockedCase.rows[0].case_id, 'CASE-FK-001');
+      await sqlExecutor.exec('COMMIT');
+    } catch (err) {
+      await sqlExecutor.exec('ROLLBACK');
+      throw err;
+    }
   });
 
   it('DB-TEST-06: Immutable Append-Only Triggers on All 6 Ledgers Block UPDATE, DELETE & TRUNCATE with Explicit SQLSTATE 42501', async () => {
@@ -443,7 +562,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     });
 
     // Seed 1 valid row into each of the 6 append-only tables
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.evidence_files (
         evidence_id, application_id, uploader_user_id, evidence_pillar, file_type,
         storage_uri, size_bytes, residential_geozone_masked, raw_binary_deleted_post_approval
@@ -550,17 +669,17 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
 
     for (const item of updateAttempts) {
       await assertPgSqlState(
-        () => pglite.query(item.sql),
+        () => sqlExecutor.query(item.sql),
         '42501',
         `BEFORE UPDATE trigger on ${item.table} must raise SQLSTATE 42501`
       );
       await assertPgSqlState(
-        () => pglite.query(`DELETE FROM public.${item.table}`),
+        () => sqlExecutor.query(`DELETE FROM public.${item.table}`),
         '42501',
         `BEFORE DELETE trigger on ${item.table} must raise SQLSTATE 42501`
       );
       await assertPgSqlState(
-        () => pglite.query(`TRUNCATE TABLE public.${item.table}`),
+        () => sqlExecutor.query(`TRUNCATE TABLE public.${item.table}`),
         '42501',
         `BEFORE TRUNCATE trigger on ${item.table} must raise SQLSTATE 42501`
       );
@@ -571,7 +690,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 1. Soulbound Non-Transferability: Attempting to change credential_registry.subject_user_id must fail with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        pglite.query(
+        sqlExecutor.query(
           `UPDATE public.credential_registry SET subject_user_id = 'USR-FK-REVIEWER-1' WHERE credential_id = '0TO8848-CRED-2026-000501'`
         ),
       '42501',
@@ -581,7 +700,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 2. Attempting to delete from credential_registry must fail with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        pglite.query(
+        sqlExecutor.query(
           `DELETE FROM public.credential_registry WHERE credential_id = '0TO8848-CRED-2026-000501'`
         ),
       '42501',
@@ -589,7 +708,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     );
 
     // 3. Governance Proposal & Role Assignment Validation (#06 role_assignments + #69 governance_proposals):
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.governance_proposals (
         proposal_id, department_id, action_type, proposed_by_user_id,
         co_signed_by_user_ids_json, required_quorum_count, quorum_met,
@@ -608,7 +727,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 3a. Self-promotion (user_id = granted_by_user_id) must fail with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.role_assignments (
             assignment_id, user_id, role_id, granted_by_user_id, granted_by_proposal_id
           ) VALUES (
@@ -622,7 +741,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 3b. Assigning a privileged role (HERITAGE_GUARDIAN) without granted_by_proposal_id must fail with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.role_assignments (
             assignment_id, user_id, role_id, granted_by_user_id, granted_by_proposal_id
           ) VALUES (
@@ -636,7 +755,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     // 3c. Referencing a governance proposal where quorum_met = FALSE or status != 'EXECUTED' must fail with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.role_assignments (
             assignment_id, user_id, role_id, granted_by_user_id, granted_by_proposal_id
           ) VALUES (
@@ -648,27 +767,27 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     );
 
     // 3d. Referencing a valid EXECUTED + quorum_met = TRUE proposal succeeds
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.role_assignments (
         assignment_id, user_id, role_id, granted_by_user_id, granted_by_proposal_id
       ) VALUES (
         'RA-VALID-EXEC', 'USR-FK-APPLICANT', 'HERITAGE_GUARDIAN', 'USR-FK-REVIEWER-1', 'PROP-EXECUTED-02'
-      );
+      ) ON CONFLICT (assignment_id) DO NOTHING;
     `);
-    const validAssignment = await pglite.query<{ role_id: string }>(
+    const validAssignment = await sqlExecutor.query<{ role_id: string }>(
       `SELECT role_id FROM public.role_assignments WHERE assignment_id = 'RA-VALID-EXEC'`
     );
     assert.equal(validAssignment.rows[0].role_id, 'HERITAGE_GUARDIAN');
   });
 
-  it('DB-TEST-08: Departmental Role Isolation (SET LOCAL ROLE) & Shared-Pool Anti-Escalation Enforcement (SQLSTATE 42501)', async () => {
+  it('DB-TEST-08 (incl. BUG-06): Departmental Role Isolation (SET LOCAL ROLE) on Direct Queries & Repository Methods (SQLSTATE 42501)', async () => {
     assert.equal(ALLOWED_DEPARTMENT_DB_ROLES.length, 9);
 
     // 1. app_verification_dept03 (Department 03 Verification) must be denied SELECT on Domain 9 commercial tables (sponsors, subscriptions, invoices, payment_records) with SQLSTATE 42501
     for (const commercialTable of ['sponsors', 'subscriptions', 'invoices', 'payment_records']) {
       await assertPgSqlState(
         () =>
-          executeWithDepartmentRole(pglite, 'app_verification_dept03', async (execSql) => {
+          executeWithDepartmentRole(sqlExecutor, 'app_verification_dept03', async (execSql) => {
             await execSql(`SELECT * FROM public.${commercialTable}`);
           }),
         '42501',
@@ -678,7 +797,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
 
     // Verify app_verification_dept03 CAN read verification_cases
     const dept03ReadCases = await executeWithDepartmentRole(
-      pglite,
+      sqlExecutor,
       'app_verification_dept03',
       async (execSql) => {
         const res = await execSql(
@@ -689,10 +808,17 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     );
     assert.equal(dept03ReadCases.length, 1);
 
-    // 2. app_finance_dept06 (Department 06 Finance) must be denied UPDATE on verification_cases and credential_registry with SQLSTATE 42501
+    // 2. BUG-06: Verify repository method getSanitizedCaseForReviewer executes under app_verification_dept03 and returns sanitized ReviewerCaseViewDTO
+    const sanitizedCase = await pgRepo.getSanitizedCaseForReviewer('CASE-FK-001');
+    assert.ok(sanitizedCase !== null);
+    assert.equal(sanitizedCase.caseId, 'CASE-FK-001');
+    assert.equal(sanitizedCase.applicationId, 'APP-FK-001');
+    assert.equal('sponsorId' in (sanitizedCase as unknown as Record<string, unknown>), false);
+
+    // 3. app_finance_dept06 (Department 06 Finance) must be denied UPDATE on verification_cases and credential_registry with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        executeWithDepartmentRole(pglite, 'app_finance_dept06', async (execSql) => {
+        executeWithDepartmentRole(sqlExecutor, 'app_finance_dept06', async (execSql) => {
           await execSql(
             `UPDATE public.verification_cases SET status = 'APPROVED' WHERE case_id = 'CASE-FK-001'`
           );
@@ -703,7 +829,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
 
     await assertPgSqlState(
       () =>
-        executeWithDepartmentRole(pglite, 'app_finance_dept06', async (execSql) => {
+        executeWithDepartmentRole(sqlExecutor, 'app_finance_dept06', async (execSql) => {
           await execSql(
             `UPDATE public.credential_registry SET status = 'REVOKED' WHERE credential_id = '0TO8848-CRED-2026-000501'`
           );
@@ -712,21 +838,21 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       'app_finance_dept06 must be denied UPDATE on credential_registry'
     );
 
-    // 3. app_system_admin_dept07 (Department 07 Platform Admin) must be denied SELECT on whistleblower_reports (DEPT-11 zero-IP vault) with SQLSTATE 42501
+    // 4. app_system_admin_dept07 (Department 07 Platform Admin) must be denied SELECT on whistleblower_reports (DEPT-11 zero-IP vault) with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        executeWithDepartmentRole(pglite, 'app_system_admin_dept07', async (execSql) => {
+        executeWithDepartmentRole(sqlExecutor, 'app_system_admin_dept07', async (execSql) => {
           await execSql(`SELECT * FROM public.whistleblower_reports`);
         }),
       '42501',
       'app_system_admin_dept07 must be denied SELECT on whistleblower_reports (DEPT-11 vault)'
     );
 
-    // 4. app_ai_assistive_readonly must be denied SELECT on users, verification_cases, and credential_registry with SQLSTATE 42501
+    // 5. app_ai_assistive_readonly must be denied SELECT on users, verification_cases, and credential_registry with SQLSTATE 42501
     for (const restrictedTable of ['users', 'verification_cases', 'credential_registry']) {
       await assertPgSqlState(
         () =>
-          executeWithDepartmentRole(pglite, 'app_ai_assistive_readonly', async (execSql) => {
+          executeWithDepartmentRole(sqlExecutor, 'app_ai_assistive_readonly', async (execSql) => {
             await execSql(`SELECT * FROM public.${restrictedTable}`);
           }),
         '42501',
@@ -734,7 +860,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       );
     }
 
-    // 5. Shared-pool anti-escalation guard: attempting RESET ROLE, SET ROLE postgres, SET SESSION AUTHORIZATION, or DISABLE TRIGGER inside executeWithDepartmentRole must fail with SQLSTATE 42501
+    // 6. Shared-pool anti-escalation guard: attempting RESET ROLE, SET ROLE postgres, SET SESSION AUTHORIZATION, or DISABLE TRIGGER inside executeWithDepartmentRole must fail with SQLSTATE 42501
     for (const forbiddenCmd of [
       'RESET ROLE',
       'SET ROLE postgres',
@@ -743,7 +869,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     ]) {
       await assertPgSqlState(
         () =>
-          executeWithDepartmentRole(pglite, 'app_verification_dept03', async (execSql) => {
+          executeWithDepartmentRole(sqlExecutor, 'app_verification_dept03', async (execSql) => {
             await execSql(forbiddenCmd);
           }),
         '42501',
@@ -752,18 +878,57 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     }
   });
 
-  it('DB-TEST-09: Privacy Tiers, Data Residency (NP/EU/UAE/GLOBAL), AES-256-GCM Envelope Encryption, k>=5 Anonymity & Post-Approval Binary Purge with Legal Hold Guard', async () => {
-    // 1. Verify Data Residency Partitioning across NP, EU, UAE, and GLOBAL (#01 users & #07 consent_records)
-    await pglite.exec(`
-      INSERT INTO public.users (id, email, password_hash, account_status, residency_region, privacy_tier)
-      VALUES
-        ('USR-RES-NP', 'np@0to8848.org', 'hash', 'ACTIVE', 'NP', 'TIER_4_REGULATED_PII'),
-        ('USR-RES-EU', 'eu@0to8848.org', 'hash', 'ACTIVE', 'EU', 'TIER_4_REGULATED_PII'),
-        ('USR-RES-UAE', 'uae@0to8848.org', 'hash', 'ACTIVE', 'UAE', 'TIER_4_REGULATED_PII'),
-        ('USR-RES-GLOBAL', 'global@0to8848.org', 'hash', 'ACTIVE', 'GLOBAL', 'TIER_4_REGULATED_PII')
-      ON CONFLICT (id) DO NOTHING;
-    `);
-    const residencyCounts = await pglite.query<{ residency_region: string; cnt: string }>(
+  it('DB-TEST-09 (incl. BUG-05): Repository-Enforced AES-256-GCM PII Encryption, Data Residency (NP/EU/UAE/GLOBAL), k>=5 Anonymity & Post-Approval Binary Purge with Legal Hold Guard', async () => {
+    // 1. Verify Data Residency Partitioning and Repository-Enforced AES-256-GCM PII Encryption (BUG-05)
+    await pgRepo.upsertUserWithEncryptedProfilePii({
+      userId: 'USR-RES-NP',
+      email: 'np@0to8848.org',
+      passwordHash: 'argon2id$np_hash',
+      residencyRegion: 'NP',
+      displayName: 'Pasang S.',
+      fullNamePlaintext: 'Pasang Lhamu Sherpa',
+      mfaSecretPlaintext: 'TOTP-SECRET-NP-8848',
+      countryCode: 'NPL',
+      preferredLocale: 'ne',
+    });
+
+    await pgRepo.upsertUserWithEncryptedProfilePii({
+      userId: 'USR-RES-EU',
+      email: 'eu@0to8848.org',
+      passwordHash: 'argon2id$eu_hash',
+      residencyRegion: 'EU',
+      displayName: 'Reinhold M.',
+      fullNamePlaintext: 'Reinhold Messner',
+      mfaSecretPlaintext: 'TOTP-SECRET-EU-8848',
+      countryCode: 'ITA',
+      preferredLocale: 'en',
+    });
+
+    await pgRepo.upsertUserWithEncryptedProfilePii({
+      userId: 'USR-RES-UAE',
+      email: 'uae@0to8848.org',
+      passwordHash: 'argon2id$uae_hash',
+      residencyRegion: 'UAE',
+      displayName: 'Saeed A.',
+      fullNamePlaintext: 'Saeed Al-Maktoum',
+      mfaSecretPlaintext: null,
+      countryCode: 'ARE',
+      preferredLocale: 'ar',
+    });
+
+    await pgRepo.upsertUserWithEncryptedProfilePii({
+      userId: 'USR-RES-GLOBAL',
+      email: 'global@0to8848.org',
+      passwordHash: 'argon2id$global_hash',
+      residencyRegion: 'GLOBAL',
+      displayName: 'Tenzing N.',
+      fullNamePlaintext: 'Tenzing Norgay',
+      mfaSecretPlaintext: null,
+      countryCode: 'NPL',
+      preferredLocale: 'en',
+    });
+
+    const residencyCounts = await sqlExecutor.query<{ residency_region: string; cnt: string }>(
       `SELECT residency_region, COUNT(*)::text AS cnt FROM public.users WHERE id LIKE 'USR-RES-%' GROUP BY residency_region`
     );
     assert.equal(
@@ -772,49 +937,69 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       'All 4 data residency jurisdictions (NP, EU, UAE, GLOBAL) must be supported'
     );
 
-    // 2. Verify AES-256-GCM authenticated envelope encryption for TIER_4_REGULATED_PII (user_profiles.full_name_encrypted)
-    const aadContext = 'USR-RES-NP|NP|FULL_LEGAL_NAME';
-    const encryptedFullName = encryptEnvelopeAes256Gcm(
-      'Pasang Lhamu Sherpa',
-      aadContext
-    );
-
-    await pglite.query(
-      `INSERT INTO public.user_profiles (
-        user_id, display_name, full_name_encrypted, country_code, preferred_locale, privacy_tier
-      ) VALUES ($1, $2, $3, $4, $5, $6)`,
-      ['USR-RES-NP', 'Pasang S.', encryptedFullName, 'NPL', 'ne', 'TIER_4_REGULATED_PII']
-    );
-
-    const storedProfile = await pglite.query<{
-      full_name_encrypted: string;
+    // 2. Verify raw PostgreSQL columns contain ONLY AES-256-GCM v1 envelopes and NEVER contain plaintext PII
+    const rawStoredPii = await sqlExecutor.query<{
+      mfa_secret_encrypted: string | null;
+      full_name_encrypted: string | null;
       privacy_tier: string;
-    }>(`SELECT full_name_encrypted, privacy_tier FROM public.user_profiles WHERE user_id = 'USR-RES-NP'`);
-    assert.equal(storedProfile.rows[0].privacy_tier, 'TIER_4_REGULATED_PII');
+    }>(
+      `SELECT u.mfa_secret_encrypted, up.full_name_encrypted, up.privacy_tier
+       FROM public.users u
+       JOIN public.user_profiles up ON up.user_id = u.id
+       WHERE u.id = 'USR-RES-NP'`
+    );
+    assert.equal(rawStoredPii.rows.length, 1);
+    assert.equal(rawStoredPii.rows[0].privacy_tier, 'TIER_4_REGULATED_PII');
+    assert.ok(rawStoredPii.rows[0].full_name_encrypted?.startsWith('v1:'));
+    assert.ok(rawStoredPii.rows[0].mfa_secret_encrypted?.startsWith('v1:'));
     assert.equal(
-      storedProfile.rows[0].full_name_encrypted.includes('Pasang Lhamu'),
+      rawStoredPii.rows[0].full_name_encrypted?.includes('Pasang Lhamu'),
       false,
-      'Raw plaintext PII must never appear in stored TIER_4_REGULATED_PII column'
+      'Raw plaintext legal name must never appear in user_profiles.full_name_encrypted'
+    );
+    assert.equal(
+      rawStoredPii.rows[0].mfa_secret_encrypted?.includes('TOTP-SECRET-NP-8848'),
+      false,
+      'Raw plaintext MFA secret must never appear in users.mfa_secret_encrypted'
     );
 
-    const decryptedPlaintext = decryptEnvelopeAes256Gcm(
-      storedProfile.rows[0].full_name_encrypted,
-      aadContext
-    );
-    assert.equal(decryptedPlaintext, 'Pasang Lhamu Sherpa');
+    // 3. Verify repository decryption round-trip returns exact plaintext PII
+    const decryptedProfile = await pgRepo.getUserWithDecryptedProfilePii('USR-RES-NP');
+    assert.ok(decryptedProfile !== null);
+    assert.equal(decryptedProfile.fullNamePlaintext, 'Pasang Lhamu Sherpa');
+    assert.equal(decryptedProfile.mfaSecretPlaintext, 'TOTP-SECRET-NP-8848');
+    assert.equal(decryptedProfile.residencyRegion, 'NP');
 
-    // Wrong AAD context must fail GCM authentication tag verification
+    // 4. Verify AAD jurisdiction binding: if residency_region is tampered with in DB, decryption fails closed
+    await sqlExecutor.query(
+      `UPDATE public.users SET residency_region = 'EU' WHERE id = 'USR-RES-NP'`
+    );
+    await assert.rejects(async () => {
+      await pgRepo.getUserWithDecryptedProfilePii('USR-RES-NP');
+    });
+    // Restore legitimate residency_region = 'NP'
+    await sqlExecutor.query(
+      `UPDATE public.users SET residency_region = 'NP' WHERE id = 'USR-RES-NP'`
+    );
+
+    // Also verify low-level envelope helper rejects wrong AAD
+    const sampleEnvelope = encryptEnvelopeAes256Gcm(
+      'Test Sensitive Payload',
+      'CTX-VALID',
+      EPHEMERAL_TEST_ENCRYPTION_KEY_HEX
+    );
+    assert.equal(
+      decryptEnvelopeAes256Gcm(sampleEnvelope, 'CTX-VALID', EPHEMERAL_TEST_ENCRYPTION_KEY_HEX),
+      'Test Sensitive Payload'
+    );
     assert.throws(() => {
-      decryptEnvelopeAes256Gcm(
-        storedProfile.rows[0].full_name_encrypted,
-        'USR-RES-EU|EU|WRONG_CONTEXT'
-      );
+      decryptEnvelopeAes256Gcm(sampleEnvelope, 'CTX-TAMPERED', EPHEMERAL_TEST_ENCRYPTION_KEY_HEX);
     });
 
-    // 3. Verify k >= 5 k-anonymity floor on aggregated_daily_metrics (#84)
+    // 5. Verify k >= 5 k-anonymity floor on aggregated_daily_metrics (#84)
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           INSERT INTO public.aggregated_daily_metrics (
             metric_id, date_bucket, metric_key, dimension_key, metric_count, k_anonymity_floor_enforced
           ) VALUES (
@@ -825,28 +1010,26 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       'Cohort with metric_count < 5 must violate chk_aggregated_daily_metrics_k_anonymity_floor'
     );
 
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       INSERT INTO public.aggregated_daily_metrics (
         metric_id, date_bucket, metric_key, dimension_key, metric_count, k_anonymity_floor_enforced
       ) VALUES (
         'METRIC-VALID-K5', '2026-11-14', 'VERIFIED_ASCENTS', 'REG-NEPAL-KHUMBU', 7, 5
-      );
+      ) ON CONFLICT (metric_id) DO NOTHING;
     `);
 
-    // 4. Verify Post-Approval Raw Binary Purge & Legal-Hold Protection:
-    // 4a. Create a deletion_requests row with legal_hold_active = TRUE targeting EV-IMMUT-001
-    await pglite.exec(`
+    // 6. Verify Post-Approval Raw Binary Purge & Legal-Hold Protection:
+    await sqlExecutor.exec(`
       INSERT INTO public.deletion_requests (
         deletion_id, user_id, scope, target_evidence_id, legal_hold_active, status
       ) VALUES (
         'DEL-HOLD-001', 'USR-FK-APPLICANT', 'RAW_EVIDENCE_BINARY_ONLY', 'EV-IMMUT-001', TRUE, 'LEGAL_HOLD'
-      );
+      ) ON CONFLICT (deletion_id) DO UPDATE SET legal_hold_active = TRUE;
     `);
 
-    // Attempting to set raw_binary_deleted_post_approval = TRUE while legal_hold_active = TRUE must fail with SQLSTATE 42501
     await assertPgSqlState(
       () =>
-        pglite.exec(`
+        sqlExecutor.exec(`
           UPDATE public.evidence_files
           SET raw_binary_deleted_post_approval = TRUE, storage_uri = 'PURGED_POST_APPROVAL'
           WHERE evidence_id = 'EV-IMMUT-001';
@@ -855,15 +1038,14 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       'Purging raw binary evidence while deletion_requests.legal_hold_active = TRUE must fail with SQLSTATE 42501'
     );
 
-    // 4b. Release the legal hold (legal_hold_active = FALSE); now post-approval raw binary purge succeeds while preserving evidence_hashes.sha256_hex
-    await pglite.exec(`
+    await sqlExecutor.exec(`
       UPDATE public.deletion_requests SET legal_hold_active = FALSE WHERE deletion_id = 'DEL-HOLD-001';
       UPDATE public.evidence_files
       SET raw_binary_deleted_post_approval = TRUE, storage_uri = 'PURGED_POST_APPROVAL'
       WHERE evidence_id = 'EV-IMMUT-001';
     `);
 
-    const purgedCheck = await pglite.query<{
+    const purgedCheck = await sqlExecutor.query<{
       raw_binary_deleted_post_approval: boolean;
       sha256_hex: string;
     }>(`
@@ -876,32 +1058,134 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     assert.equal(purgedCheck.rows[0].sha256_hex, computeSha256Hex('ev1'));
   });
 
-  it('DB-TEST-10: Encrypted Portable Backup Snapshot Export, SHA-256 Manifest Verification & Tamper Rejection', async () => {
-    // 1. Export portable snapshot from PostgreSQL repository
+  it('DB-TEST-10 (incl. BUG-03): Encrypted Portable Backup Snapshot Export, Genuine Transactional Restoration into Empty Target DB & Tamper/Rollback Verification', async () => {
+    // 1. Export portable snapshot from active PostgreSQL repository
     const snapshot = await pgRepo.exportPortableSnapshot();
     assert.ok(snapshot.snapshotId.startsWith('SNAP-'));
     assert.equal(snapshot.schemaVersion, 'v1.1.0-phase05-86tables');
-    assert.ok(snapshot.totalRecordsCount >= 200);
+    assert.ok(snapshot.totalRecordsCount >= 400);
     assert.ok(/^[0-9a-f]{64}$/.test(snapshot.sha256ManifestHash));
 
-    // 2. Restore and verify snapshot into pgRepo and check backup_verification_logs (#85)
-    const verifyOk = await pgRepo.restoreAndVerifyPortableSnapshot(snapshot);
-    assert.equal(verifyOk.manifestVerified, true);
-    assert.equal(verifyOk.hashChainIntact, true);
-    assert.equal(verifyOk.restoredRecordsCount, snapshot.totalRecordsCount);
+    // 2. BUG-03 Verification: Provision a BRAND-NEW empty PostgreSQL instance (migrations applied, 0 rows seeded)
+    // and verify restoreAndVerifyPortableSnapshot genuinely restores all 86 tables atomically!
+    const emptyTargetEngine = await createEmbeddedPostgresEngine();
+    try {
+      await applyPhase05Migrations(emptyTargetEngine.sqlExecutor);
 
-    const backupLogRow = await pglite.query<{
-      restore_verified: boolean;
-      sha256_manifest_hash: string;
-    }>(
-      `SELECT restore_verified, sha256_manifest_hash FROM public.backup_verification_logs WHERE snapshot_id = $1`,
-      [snapshot.snapshotId]
-    );
-    assert.equal(backupLogRow.rows.length, 1);
-    assert.equal(backupLogRow.rows[0].restore_verified, true);
-    assert.equal(backupLogRow.rows[0].sha256_manifest_hash, snapshot.sha256ManifestHash);
+      const preRestoreDestCount = await emptyTargetEngine.sqlExecutor.query<{ cnt: string }>(
+        `SELECT COUNT(*)::text AS cnt FROM public.destinations`
+      );
+      assert.equal(
+        Number(preRestoreDestCount.rows[0].cnt),
+        0,
+        'Fresh target database must have 0 destinations prior to snapshot restoration'
+      );
 
-    // 3. Tamper with manifest SHA-256 hash and verify restore rejects it
+      const freshTargetRepo = new PostgresDrizzleRepository({
+        db: emptyTargetEngine.db,
+        sqlExecutor: emptyTargetEngine.sqlExecutor,
+        encryptionKeyHex: EPHEMERAL_TEST_ENCRYPTION_KEY_HEX,
+      });
+
+      const restoreResult = await freshTargetRepo.restoreAndVerifyPortableSnapshot(snapshot);
+      assert.equal(restoreResult.manifestVerified, true);
+      assert.equal(restoreResult.hashChainIntact, true);
+      assert.equal(restoreResult.restoredRecordsCount, snapshot.totalRecordsCount);
+
+      // Verify restored rows are genuinely queryable in freshTargetRepo
+      const restoredDests = await freshTargetRepo.getFeaturedDestinations();
+      assert.equal(restoredDests.length, 100, 'All 100 destinations must be restored into target DB');
+
+      const restoredCategories = await freshTargetRepo.getAdventureCategories();
+      assert.equal(
+        restoredCategories.length,
+        24,
+        'All 24 adventure categories must be restored into target DB'
+      );
+
+      const restoredCred = await freshTargetRepo.getPublicCredentialVerification(
+        '0TO8848-CRED-2026-000501'
+      );
+      assert.ok(restoredCred !== null, 'Issued credential must be restored into target DB');
+      assert.equal(restoredCred.status, 'VALID');
+
+      const restoredEncryptedUser =
+        await freshTargetRepo.getUserWithDecryptedProfilePii('USR-RES-NP');
+      assert.ok(restoredEncryptedUser !== null, 'Encrypted PII user must be restored into target DB');
+      assert.equal(restoredEncryptedUser.fullNamePlaintext, 'Pasang Lhamu Sherpa');
+
+      const backupLogRow = await emptyTargetEngine.sqlExecutor.query<{
+        restore_verified: boolean;
+        sha256_manifest_hash: string;
+      }>(
+        `SELECT restore_verified, sha256_manifest_hash FROM public.backup_verification_logs WHERE snapshot_id = $1`,
+        [snapshot.snapshotId]
+      );
+      assert.equal(backupLogRow.rows.length, 1);
+      assert.equal(backupLogRow.rows[0].restore_verified, true);
+      assert.equal(backupLogRow.rows[0].sha256_manifest_hash, snapshot.sha256ManifestHash);
+
+      // 3. Verify atomic rollback when a snapshot contains a broken credential hash chain
+      const decryptedRaw = decryptEnvelopeAes256Gcm(
+        snapshot.encryptedPayloadBase64,
+        `${snapshot.snapshotId}|${snapshot.sha256ManifestHash}`,
+        EPHEMERAL_TEST_ENCRYPTION_KEY_HEX
+      );
+      const parsedSnapshotData = JSON.parse(decryptedRaw) as {
+        snapshotId: string;
+        schemaVersion: string;
+        exportedAtIso: string;
+        tableData: Record<string, Array<Record<string, unknown>>>;
+      };
+      // Corrupt previous_event_hash in credential_registry while recomputing a valid manifest hash
+      parsedSnapshotData.tableData['credential_registry'] = parsedSnapshotData.tableData[
+        'credential_registry'
+      ].map((row) => ({
+        ...row,
+        previous_event_hash: 'f'.repeat(64),
+      }));
+      const corruptedJson = JSON.stringify(parsedSnapshotData);
+      const corruptedSnapId = 'SNAP-CORRUPT-CHAIN';
+      const corruptedManifestHash = computeSha256Hex(
+        encodeCanonicalHashFields([
+          corruptedSnapId,
+          snapshot.schemaVersion,
+          String(snapshot.totalRecordsCount),
+          corruptedJson,
+        ])
+      );
+      const corruptedEncryptedBase64 = encryptEnvelopeAes256Gcm(
+        corruptedJson,
+        `${corruptedSnapId}|${corruptedManifestHash}`,
+        EPHEMERAL_TEST_ENCRYPTION_KEY_HEX
+      );
+
+      await assert.rejects(
+        async () => {
+          await freshTargetRepo.restoreAndVerifyPortableSnapshot({
+            snapshotId: corruptedSnapId,
+            schemaVersion: snapshot.schemaVersion,
+            exportedAtIso: new Date().toISOString(),
+            sha256ManifestHash: corruptedManifestHash,
+            totalRecordsCount: snapshot.totalRecordsCount,
+            encryptedPayloadBase64: corruptedEncryptedBase64,
+          });
+        },
+        /SNAPSHOT_RESTORE_HASH_CHAIN_BROKEN/
+      );
+
+      // Confirm that the failed restore rolled back and kept the valid credential chain intact in freshTargetRepo
+      const chainAfterRollback = await freshTargetRepo.verifyRegistryHashChain();
+      assert.equal(
+        chainAfterRollback.intact,
+        true,
+        'Failed snapshot restore must roll back atomically and leave existing hash chain intact'
+      );
+    } finally {
+      await emptyTargetEngine.sqlExecutor.close();
+    }
+
+    // 4. Tamper with manifest SHA-256 hash and verify restore rejects it before touching the DB
     const tamperedSnapshot = {
       ...snapshot,
       sha256ManifestHash: computeSha256Hex('TAMPERED_BACKUP_MANIFEST'),
@@ -912,7 +1196,9 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
   });
 
   it('DB-TEST-11: Vendor-Independent IDatabaseRepository Adapter Portability (PostgresDrizzleRepository vs InMemoryRelationalRepository)', async () => {
-    const inMemoryRepo = new InMemoryRelationalRepository();
+    const inMemoryRepo = new InMemoryRelationalRepository({
+      encryptionKeyHex: EPHEMERAL_TEST_ENCRYPTION_KEY_HEX,
+    });
 
     async function runPortableAdapterContractSuite(repo: IDatabaseRepository): Promise<void> {
       const categories = await repo.getAdventureCategories();
@@ -941,7 +1227,19 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
     await runPortableAdapterContractSuite(pgRepo);
     await runPortableAdapterContractSuite(inMemoryRepo);
 
-    // Also test credential issuance, hash chain verification, and snapshot round-trip on InMemoryRelationalRepository
+    // Also test PII encryption, credential issuance, hash chain verification, and snapshot restoration into a fresh InMemoryRelationalRepository
+    await inMemoryRepo.upsertUserWithEncryptedProfilePii({
+      userId: 'USR-PORTABLE-01',
+      email: 'portable@0to8848.org',
+      passwordHash: 'argon2id$portable',
+      residencyRegion: 'NP',
+      displayName: 'Mingma G.',
+      fullNamePlaintext: 'Mingma Gyalje Sherpa',
+      mfaSecretPlaintext: 'MFA-PORTABLE-01',
+      countryCode: 'NPL',
+      preferredLocale: 'ne',
+    });
+
     await inMemoryRepo.withTransaction(async (tx) => {
       await inMemoryRepo.appendCredentialRegistryRecord(
         {
@@ -958,6 +1256,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
           issuedAtIso: '2026-11-14T01:00:00.000Z',
           issuingAuthority: '0 TO 8848 Independent Verification Department',
           status: CredentialValidityStatus.VALID,
+          nonTransferable: true,
           previousEventHash: '0'.repeat(64),
           currentCredentialHash: computeSha256Hex('0TO8848-CRED-2026-000777'),
           policyVersion: 'v1.1.0',
@@ -965,21 +1264,27 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
         tx
       );
     });
-    const memCred = await inMemoryRepo.getPublicCredentialVerification('0TO8848-CRED-2026-000777');
-    assert.ok(memCred !== null);
-    assert.equal(memCred.status, 'VALID');
-
-    const memChain = await inMemoryRepo.verifyRegistryHashChain();
-    assert.equal(memChain.intact, true);
-    assert.equal(memChain.verifiedCount, 1);
 
     const memSnap = await inMemoryRepo.exportPortableSnapshot();
-    const memRestore = await inMemoryRepo.restoreAndVerifyPortableSnapshot(memSnap);
+    const freshMemRepo = new InMemoryRelationalRepository({
+      encryptionKeyHex: EPHEMERAL_TEST_ENCRYPTION_KEY_HEX,
+    });
+    const memRestore = await freshMemRepo.restoreAndVerifyPortableSnapshot(memSnap);
     assert.equal(memRestore.manifestVerified, true);
     assert.equal(memRestore.hashChainIntact, true);
+
+    const restoredMemCred = await freshMemRepo.getPublicCredentialVerification(
+      '0TO8848-CRED-2026-000777'
+    );
+    assert.ok(restoredMemCred !== null);
+    assert.equal(restoredMemCred.status, 'VALID');
+
+    const restoredMemUser = await freshMemRepo.getUserWithDecryptedProfilePii('USR-PORTABLE-01');
+    assert.ok(restoredMemUser !== null);
+    assert.equal(restoredMemUser.fullNamePlaintext, 'Mingma Gyalje Sherpa');
   });
 
-  it('DB-TEST-12: Phase 05 Express API Gateway Integration & Cumulative Constitutional Endpoint Verification', async () => {
+  it('DB-TEST-12 (incl. BUG-06): Phase 05 Express API Gateway Integration, Live Departmental DB Role Execution & Constitutional Endpoint Verification', async () => {
     const app = createPhase05ExpressApp(async () => pgRepo);
     const server = app.listen(0, '127.0.0.1');
     const address = server.address();
@@ -1000,7 +1305,7 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       assert.equal(healthJson.constitutionalLocks.paymentsEnabled, false);
       assert.equal(healthJson.constitutionalLocks.blockchainEnabled, false);
 
-      // 2. GET /api/v1/categories
+      // 2. GET /api/v1/categories (Executes under app_public_readonly)
       const catRes = await fetch(`${baseUrl}/api/v1/categories`);
       assert.equal(catRes.status, 200);
       const catJson = (await catRes.json()) as {
@@ -1010,13 +1315,13 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       assert.equal(catJson.macroDomainsCount, 6);
       assert.equal(catJson.categoriesCount, 24);
 
-      // 3. GET /api/v1/destinations
+      // 3. GET /api/v1/destinations (Executes under app_public_readonly)
       const destRes = await fetch(`${baseUrl}/api/v1/destinations?status=PROPOSED`);
       assert.equal(destRes.status, 200);
       const destJson = (await destRes.json()) as { count: number };
       assert.equal(destJson.count, 100);
 
-      // 4. GET /api/v1/credentials/verify/:credentialId (Issued in DB-TEST-03 vs Unknown vs Preview Fixture)
+      // 4. GET /api/v1/credentials/verify/:credentialId (Issued in DB-TEST-03 vs Unknown)
       const issuedCredRes = await fetch(
         `${baseUrl}/api/v1/credentials/verify/0TO8848-CRED-2026-000501`
       );
@@ -1033,7 +1338,42 @@ describe('PHASE 05 — PostgreSQL 86-Table Schema, Drizzle ORM, Security Roles &
       );
       assert.equal(unknownCredRes.status, 404);
 
-      // 5. Constitutional HTTP 403 Locks on /api/v1/payments/* and /api/v1/blockchain/*
+      // 5. BUG-06: GET /api/v1/verification/cases/:caseId (Executes under app_verification_dept03)
+      const caseRes = await fetch(`${baseUrl}/api/v1/verification/cases/CASE-FK-001`);
+      assert.equal(caseRes.status, 200);
+      const caseJson = (await caseRes.json()) as {
+        departmentRoleEnforced: string;
+        commercialFirewallApplied: boolean;
+        case: { caseId: string; applicationId: string };
+      };
+      assert.equal(caseJson.departmentRoleEnforced, 'app_verification_dept03');
+      assert.equal(caseJson.commercialFirewallApplied, true);
+      assert.equal(caseJson.case.caseId, 'CASE-FK-001');
+
+      // 6. BUG-06: POST /api/v1/whistleblower/reports (Executes under app_internal_audit_dept11)
+      const wbRes = await fetch(`${baseUrl}/api/v1/whistleblower/reports`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          reportId: 'WB-HTTP-001',
+          oneTimeReceiptToken: 'ONE-TIME-RECEIPT-TOKEN-8848',
+          category: 'SPONSOR_INTERFERENCE',
+          encryptedNarrative: 'PGP-ENCRYPTED-WHISTLEBLOWER-TEST',
+        }),
+      });
+      assert.equal(wbRes.status, 201);
+      const wbJson = (await wbRes.json()) as {
+        status: string;
+        departmentRoleEnforced: string;
+        callerIpLogged: boolean;
+        receiptCodeHash: string;
+      };
+      assert.equal(wbJson.status, 'SUBMITTED_ZERO_IP');
+      assert.equal(wbJson.departmentRoleEnforced, 'app_internal_audit_dept11');
+      assert.equal(wbJson.callerIpLogged, false);
+      assert.ok(/^[0-9a-f]{64}$/.test(wbJson.receiptCodeHash));
+
+      // 7. Constitutional HTTP 403 Locks on /api/v1/payments/* and /api/v1/blockchain/*
       const paymentRes = await fetch(`${baseUrl}/api/v1/payments/checkout`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

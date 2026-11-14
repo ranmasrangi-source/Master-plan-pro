@@ -44,10 +44,36 @@ export interface PortableInstitutionalSnapshot {
   readonly encryptedPayloadBase64: string;
 }
 
+export interface EncryptedUserProfileInput {
+  readonly userId: string;
+  readonly email: string;
+  readonly passwordHash: string;
+  readonly displayName: string;
+  readonly fullNamePlaintext: string;
+  readonly mfaSecretPlaintext?: string | null;
+  readonly countryCode: string;
+  readonly preferredLocale?: 'en' | 'ne' | 'ar';
+  readonly residencyRegion: 'NP' | 'EU' | 'UAE' | 'GLOBAL';
+}
+
+export interface DecryptedUserProfileRecord {
+  readonly userId: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly fullNamePlaintext: string;
+  readonly fullNameCiphertext: string;
+  readonly mfaSecretPlaintext: string | null;
+  readonly mfaSecretCiphertext: string | null;
+  readonly countryCode: string;
+  readonly preferredLocale: 'en' | 'ne' | 'ar';
+  readonly residencyRegion: 'NP' | 'EU' | 'UAE' | 'GLOBAL';
+  readonly privacyTier: 'TIER_4_REGULATED_PII';
+}
+
 /**
  * Vendor-neutral repository contract.
  * Domain services interact exclusively with IDatabaseRepository so the backing engine
- * (PostgreSQL + Drizzle ORM, PGlite PostgreSQL 16, or InMemoryRelationalRepository)
+ * (PostgreSQL + Drizzle ORM via node-postgres Pool, or InMemoryRelationalRepository)
  * can be swapped within 48 hours without changing domain service code.
  */
 export interface IDatabaseRepository {
@@ -55,6 +81,18 @@ export interface IDatabaseRepository {
    * Executes a callback inside an ACID transaction.
    */
   withTransaction<T>(fn: (tx: ITransactionContext) => Promise<T>): Promise<T>;
+
+  // Identity & Automatic TIER_4_REGULATED_PII Envelope Encryption Boundary (BUG-05)
+  upsertUserWithEncryptedProfilePii(
+    input: EncryptedUserProfileInput,
+    tx?: ITransactionContext
+  ): Promise<{
+    readonly userId: string;
+    readonly fullNameCiphertext: string;
+    readonly mfaSecretCiphertext: string | null;
+    readonly residencyRegion: 'NP' | 'EU' | 'UAE' | 'GLOBAL';
+  }>;
+  getUserWithDecryptedProfilePii(userId: string): Promise<DecryptedUserProfileRecord | null>;
 
   // Taxonomy & 100 Destinations
   getAdventureCategories(): Promise<readonly AdventureCategory[]>;
@@ -103,7 +141,9 @@ export interface IDatabaseRepository {
   getTrustTransparencySnapshot(): Promise<TrustTransparencySnapshot>;
 
   // Governance, Whistleblower & DR Portability
-  submitWhistleblowerReport(report: WhistleblowerReport): Promise<{ readonly receiptCodeHash: string }>;
+  submitWhistleblowerReport(
+    report: WhistleblowerReport
+  ): Promise<{ readonly receiptCodeHash: string }>;
   createGovernanceProposal(proposal: GovernanceQuorumProposal): Promise<void>;
   exportPortableSnapshot(): Promise<PortableInstitutionalSnapshot>;
   restoreAndVerifyPortableSnapshot(snapshot: PortableInstitutionalSnapshot): Promise<{
