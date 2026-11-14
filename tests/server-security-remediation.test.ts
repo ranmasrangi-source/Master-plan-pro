@@ -738,14 +738,24 @@ describe('0 TO 8848 — Phase 5 Readiness Gate & Post-CI Audit Remediation Suite
       path.resolve(process.cwd(), 'docs/23_PHASE_ACCEPTANCE.md'),
       'utf8'
     );
-    assert.ok(acceptanceDoc.includes('AWAITING FOUNDER APPROVAL (NOT AUTOMATICALLY ACCEPTED)'));
-    assert.ok(acceptanceDoc.includes('Phase 05 Status:** `NOT STARTED'));
+    assert.ok(acceptanceDoc.includes('CONDITIONAL APPROVAL GRANTED BY FOUNDER'));
+    assert.ok(acceptanceDoc.includes('Phase 05 Status:** `IN PROGRESS'));
 
-    // Verify Phase 02 vendor-independent adapter interfaces exist while Phase 05+ backend implementation remains unstarted
+    // Verify Phase 02 vendor-independent adapter interfaces and Phase 05 PostgreSQL/Drizzle implementations exist
     assert.equal(
       fs.existsSync(path.resolve(process.cwd(), 'src/adapters/IDatabaseRepository.ts')),
       true,
-      'Phase 02 IDatabaseRepository interface contract must exist'
+      'Phase 02/05 IDatabaseRepository interface contract must exist'
+    );
+    assert.equal(
+      fs.existsSync(path.resolve(process.cwd(), 'src/adapters/PostgresDrizzleRepository.ts')),
+      true,
+      'Phase 05 PostgresDrizzleRepository implementation must exist'
+    );
+    assert.equal(
+      fs.existsSync(path.resolve(process.cwd(), 'src/adapters/InMemoryRelationalRepository.ts')),
+      true,
+      'Phase 05 InMemoryRelationalRepository portable adapter must exist'
     );
     assert.equal(
       fs.existsSync(path.resolve(process.cwd(), 'src/adapters/IStorageProvider.ts')),
@@ -759,15 +769,13 @@ describe('0 TO 8848 — Phase 5 Readiness Gate & Post-CI Audit Remediation Suite
     );
     assert.equal(
       fs.existsSync(path.resolve(process.cwd(), 'server.ts')),
-      false,
-      'Phase 05+ backend server.ts must not be prematurely created during Phase 01-04'
+      true,
+      'Phase 05 backend server.ts bootstrap must exist under Founder Phase 05 Conditional Approval'
     );
     assert.equal(
-      fs.existsSync(
-        path.resolve(process.cwd(), 'src/adapters/FileBackedRelationalRepository.ts')
-      ),
-      false,
-      'Phase 05+ concrete database repository must not be prematurely created during Phase 01-04'
+      fs.existsSync(path.resolve(process.cwd(), 'src/db/schema.ts')),
+      true,
+      'Phase 05 86-table Drizzle schema barrel must exist'
     );
   });
 

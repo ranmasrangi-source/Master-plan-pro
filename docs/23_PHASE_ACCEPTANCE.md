@@ -1,12 +1,12 @@
 # 23 — PHASE ACCEPTANCE & GATE VERIFICATION REGISTER (ULTIMATE V1.1)
 
 **Document Version:** ULTIMATE V1.1  
-**Current Phase:** PHASE 04 — BRAND, UI/UX & DESIGN SYSTEM  
+**Current Phase:** PHASE 05 — DATABASE SCHEMA, PERSISTENCE & CORE DATA LAYER (IN PROGRESS UNDER CONDITIONAL FOUNDER APPROVAL)  
 **Gate 01 Status:** `PASS` (Authorized by Founder Directive: *"Proceed phase 2"*)  
 **Gate 02 Status:** `PASS` (Authorized by Founder Directive: *"Proceed phase 3"*)  
 **Gate 03 Status:** `PASS` (Authorized by Founder Directive: *"Proceed phase 4"*)  
-**Gate 04 Status:** `AWAITING FOUNDER APPROVAL (NOT AUTOMATICALLY ACCEPTED)`  
-**Phase 05 Status:** `NOT STARTED (BLOCKED / LOCKED PENDING EXPLICIT WRITTEN FOUNDER APPROVAL)`
+**Gate 04 Status:** `CONDITIONAL APPROVAL GRANTED BY FOUNDER ("FOUNDER DIRECTIVE: CONDITIONAL APPROVAL TO PROCEED WITH PHASE 05")`  
+**Phase 05 Status:** `IN PROGRESS (CONDITIONAL APPROVAL GRANTED BY FOUNDER; GATE 05 AWAITING FINAL FOUNDER ACCEPTANCE)`
 
 ---
 
@@ -14,8 +14,9 @@
 - **Gate 01 (`PHASE 01 — MASTER REQUIREMENTS & BLUEPRINT`):** `PASS`
 - **Gate 02 (`PHASE 02 — TECHNICAL ARCHITECTURE & SYSTEM DESIGN`):** `PASS`
 - **Gate 03 (`PHASE 03 — DEVELOPMENT INFRASTRUCTURE & GITHUB`):** `PASS`
-- **Gate 04 (`PHASE 04 — BRAND, UI/UX, DESIGN SYSTEM & SECURITY READINESS REMEDIATION`):** `AWAITING FOUNDER APPROVAL` *(Never marked PASS automatically; requires explicit Founder written sign-off)*
-- **Gates 05–21 (`PHASE 05` through `PHASE 21`):** `NOT STARTED (BLOCKED)`. The complete, authoritative 21-Phase Master Execution Roadmap (`PHASE 01` through `PHASE 21`) is recorded in `/docs/22_CHANGE_CONTROL.md` (Section 2).
+- **Gate 04 (`PHASE 04 — BRAND, UI/UX, DESIGN SYSTEM & SECURITY READINESS REMEDIATION`):** `CONDITIONAL APPROVAL GRANTED BY FOUNDER` *(Authorized by written Founder Directive: "CONDITIONAL APPROVAL TO PROCEED WITH PHASE 05")*
+- **Gate 05 (`PHASE 05 — DATABASE SCHEMA, PERSISTENCE & CORE DATA LAYER`):** `IN PROGRESS (AWAITING FOUNDER GATE 05 SIGN-OFF)`
+- **Gates 06–21 (`PHASE 06` through `PHASE 21`):** `NOT STARTED (BLOCKED)`. The complete, authoritative 21-Phase Master Execution Roadmap (`PHASE 01` through `PHASE 21`) is recorded in `/docs/22_CHANGE_CONTROL.md` (Section 2).
 
 ---
 

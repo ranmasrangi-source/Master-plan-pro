@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 0 TO 8848 — Global Adventure Achievement Platform
- * Phase 02: Vendor-Independent Database Repository Interface (FQ-01 Option A & System #13)
+ * Phase 02 / Phase 05: Vendor-Independent Database Repository Interface (FQ-01 Option A & System #13)
  */
 
 import {
@@ -32,6 +32,7 @@ import {
 export interface ITransactionContext {
   readonly transactionId: string;
   readonly startedAtIso: string;
+  readonly internalTxClient?: unknown;
 }
 
 export interface PortableInstitutionalSnapshot {
@@ -46,7 +47,8 @@ export interface PortableInstitutionalSnapshot {
 /**
  * Vendor-neutral repository contract.
  * Domain services interact exclusively with IDatabaseRepository so the backing engine
- * (PostgreSQL, SQLite/libSQL, or Cloud Firestore) can be swapped within 48 hours.
+ * (PostgreSQL + Drizzle ORM, PGlite PostgreSQL 16, or InMemoryRelationalRepository)
+ * can be swapped within 48 hours without changing domain service code.
  */
 export interface IDatabaseRepository {
   /**
@@ -104,4 +106,9 @@ export interface IDatabaseRepository {
   submitWhistleblowerReport(report: WhistleblowerReport): Promise<{ readonly receiptCodeHash: string }>;
   createGovernanceProposal(proposal: GovernanceQuorumProposal): Promise<void>;
   exportPortableSnapshot(): Promise<PortableInstitutionalSnapshot>;
+  restoreAndVerifyPortableSnapshot(snapshot: PortableInstitutionalSnapshot): Promise<{
+    readonly restoredRecordsCount: number;
+    readonly manifestVerified: boolean;
+    readonly hashChainIntact: boolean;
+  }>;
 }
