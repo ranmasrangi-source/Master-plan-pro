@@ -24,10 +24,20 @@ import { ALL_100_FEATURED_DESTINATIONS } from './destinations100Catalog.ts';
 export { ALL_100_FEATURED_DESTINATIONS };
 
 export const GENERATED_BRAND_IMAGES = {
-  everestHero: '/src/assets/images/everest_sagarmatha_hero_1794479895134.jpg',
-  alpineRidge: '/src/assets/images/alpine_ridge_expedition_1794479897714.jpg',
-  patagoniaSpires: '/src/assets/images/patagonia_granite_spires_1794479897456.jpg',
+  everestHero: new URL(
+    '../assets/images/everest_sagarmatha_hero_1794479895134.jpg',
+    import.meta.url
+  ).href,
+  alpineRidge: new URL(
+    '../assets/images/alpine_ridge_expedition_1794479897714.jpg',
+    import.meta.url
+  ).href,
+  patagoniaSpires: new URL(
+    '../assets/images/patagonia_granite_spires_1794479897456.jpg',
+    import.meta.url
+  ).href,
 } as const;
+
 
 export interface PublicPageSpec {
   readonly pageNumber: number; // 1..42 (Section 19)

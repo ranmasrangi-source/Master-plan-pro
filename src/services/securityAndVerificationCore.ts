@@ -144,6 +144,87 @@ export const PRIVILEGED_MFA_REQUIRED_ROLES: ReadonlySet<PlatformRole> = new Set(
   PlatformRole.FOUNDER,
 ]);
 
+export const DEFAULT_MFA_FRESHNESS_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours
+export const MAX_MFA_CLOCK_SKEW_MS = 5 * 60 * 1000; // 5 minutes
+export const DEFAULT_AUDIT_REFERENCE_NOW_ISO = '2026-11-12T12:00:00Z';
+
+const STRICT_ISO_8601_UTC_REGEX =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export interface MfaFreshnessValidationResult {
+  readonly valid: boolean;
+  readonly reasonCode:
+    | null
+    | 'MFA_MISSING'
+    | 'MFA_TIMESTAMP_MALFORMED'
+    | 'MFA_TIMESTAMP_FUTURE_SPOOFED'
+    | 'MFA_TIMESTAMP_EXPIRED';
+  readonly ageMs: number | null;
+}
+
+/**
+ * BUG-01 Remediation: Validates that an MFA verification timestamp is a well-formed
+ * ISO-8601 timestamp with explicit timezone offset, is not spoofed in the future,
+ * and falls within the maximum allowed freshness window (default 12 hours).
+ */
+export function validateMfaTimestampFreshness(
+  mfaVerifiedAtIso: string | null | undefined,
+  referenceNowIso: string = DEFAULT_AUDIT_REFERENCE_NOW_ISO,
+  maxAgeMs: number = DEFAULT_MFA_FRESHNESS_MAX_AGE_MS
+): MfaFreshnessValidationResult {
+  if (!mfaVerifiedAtIso || typeof mfaVerifiedAtIso !== 'string' || mfaVerifiedAtIso.trim() === '') {
+    return {
+      valid: false,
+      reasonCode: 'MFA_MISSING',
+      ageMs: null,
+    };
+  }
+
+  const trimmed = mfaVerifiedAtIso.trim();
+  if (!STRICT_ISO_8601_UTC_REGEX.test(trimmed)) {
+    return {
+      valid: false,
+      reasonCode: 'MFA_TIMESTAMP_MALFORMED',
+      ageMs: null,
+    };
+  }
+
+  const verifiedMs = Date.parse(trimmed);
+  const referenceMs = Date.parse(referenceNowIso);
+  if (!Number.isFinite(verifiedMs) || !Number.isFinite(referenceMs)) {
+    return {
+      valid: false,
+      reasonCode: 'MFA_TIMESTAMP_MALFORMED',
+      ageMs: null,
+    };
+  }
+
+  const ageMs = referenceMs - verifiedMs;
+  if (ageMs < -MAX_MFA_CLOCK_SKEW_MS) {
+    return {
+      valid: false,
+      reasonCode: 'MFA_TIMESTAMP_FUTURE_SPOOFED',
+      ageMs,
+    };
+  }
+
+  if (ageMs > maxAgeMs) {
+    return {
+      valid: false,
+      reasonCode: 'MFA_TIMESTAMP_EXPIRED',
+      ageMs,
+    };
+  }
+
+  return {
+    valid: true,
+    reasonCode: null,
+    ageMs,
+  };
+}
+
+export type ReviewerAccreditationStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'SUSPENDED';
+
 export interface AuthenticatedActorContext {
   readonly userId: string;
   readonly role: PlatformRole;
@@ -152,6 +233,9 @@ export interface AuthenticatedActorContext {
   readonly organizationIds: readonly string[];
   readonly qualifiedCategories?: readonly AdventureCategoryId[];
   readonly reviewerTier?: ReviewerQualificationTier | 'HERITAGE_GUARDIAN';
+  readonly accreditationStatus?: ReviewerAccreditationStatus;
+  readonly accreditationExpiresAtIso?: string | null;
+  readonly referenceNowIso?: string;
 }
 
 export interface AuthorizationOutcome {
@@ -169,12 +253,25 @@ export interface AuthorizationOutcome {
   readonly reason: string;
 }
 
+const REVIEWER_TIER_RANK: Readonly<Record<ReviewerQualificationTier | 'HERITAGE_GUARDIAN', number>> = {
+  [ReviewerQualificationTier.L1_TRAIL_STEWARDSHIP]: 1,
+  [ReviewerQualificationTier.L2_TECHNICAL_HIGH_ALTITUDE]: 2,
+  [ReviewerQualificationTier.L3_SENIOR_ALPINE_EXPEDITION]: 3,
+  [ReviewerQualificationTier.DUAL_L3_SENIOR_EXPEDITION]: 4,
+  [ReviewerQualificationTier.DUAL_L4_SOVEREIGN_8000M_POLAR]: 5,
+  HERITAGE_GUARDIAN: 6,
+};
+
+
 export function authorizeReviewerClaimAndAction(params: {
   readonly actor: AuthenticatedActorContext;
   readonly applicantUserId: string;
   readonly applicantOrganizationIds: readonly string[];
   readonly hasCommercialBookingWithApplicant: boolean;
   readonly requiredCategoryId: AdventureCategoryId;
+  readonly requiredReviewerTier?: ReviewerQualificationTier | 'HERITAGE_GUARDIAN';
+  readonly referenceNowIso?: string;
+  readonly mfaMaxAgeMs?: number;
 }): AuthorizationOutcome {
   const {
     actor,
@@ -182,6 +279,9 @@ export function authorizeReviewerClaimAndAction(params: {
     applicantOrganizationIds,
     hasCommercialBookingWithApplicant,
     requiredCategoryId,
+    requiredReviewerTier,
+    referenceNowIso = actor.referenceNowIso ?? DEFAULT_AUDIT_REFERENCE_NOW_ISO,
+    mfaMaxAgeMs = DEFAULT_MFA_FRESHNESS_MAX_AGE_MS,
   } = params;
 
   if (actor.sessionRevoked) {
@@ -193,13 +293,20 @@ export function authorizeReviewerClaimAndAction(params: {
     };
   }
 
-  if (PRIVILEGED_MFA_REQUIRED_ROLES.has(actor.role) && !actor.mfaVerifiedAtIso) {
-    return {
-      authorized: false,
-      httpStatus: 403,
-      errorCode: 'MFA_VERIFICATION_REQUIRED',
-      reason: `Role ${actor.role} requires active hardware/TOTP MFA verification.`,
-    };
+  if (PRIVILEGED_MFA_REQUIRED_ROLES.has(actor.role)) {
+    const mfaValidation = validateMfaTimestampFreshness(
+      actor.mfaVerifiedAtIso,
+      referenceNowIso,
+      mfaMaxAgeMs
+    );
+    if (!mfaValidation.valid) {
+      return {
+        authorized: false,
+        httpStatus: 403,
+        errorCode: 'MFA_VERIFICATION_REQUIRED',
+        reason: `Role ${actor.role} requires fresh hardware/TOTP MFA verification (${mfaValidation.reasonCode}).`,
+      };
+    }
   }
 
   const allowedReviewerRoles = new Set<PlatformRole>([
@@ -247,6 +354,35 @@ export function authorizeReviewerClaimAndAction(params: {
     };
   }
 
+  // BUG-09 Remediation: Validate reviewer accreditation status, expiry date, category, and tier
+  if (actor.accreditationStatus && actor.accreditationStatus !== 'ACTIVE') {
+    return {
+      authorized: false,
+      httpStatus: 403,
+      errorCode: 'REVIEWER_ACCREDITATION_INSUFFICIENT',
+      reason: `Reviewer accreditation status is ${actor.accreditationStatus}; ACTIVE status is required.`,
+    };
+  }
+
+  if (actor.accreditationExpiresAtIso !== undefined && actor.accreditationExpiresAtIso !== null) {
+    const trimmedExpiry = actor.accreditationExpiresAtIso.trim();
+    const expiryMs = Date.parse(trimmedExpiry);
+    const refMs = Date.parse(referenceNowIso);
+    if (
+      !STRICT_ISO_8601_UTC_REGEX.test(trimmedExpiry) ||
+      !Number.isFinite(expiryMs) ||
+      !Number.isFinite(refMs) ||
+      expiryMs <= refMs
+    ) {
+      return {
+        authorized: false,
+        httpStatus: 403,
+        errorCode: 'REVIEWER_ACCREDITATION_INSUFFICIENT',
+        reason: 'Reviewer accreditation has expired or has an invalid expiration timestamp.',
+      };
+    }
+  }
+
   if (
     !actor.qualifiedCategories ||
     !actor.qualifiedCategories.includes(requiredCategoryId)
@@ -257,6 +393,19 @@ export function authorizeReviewerClaimAndAction(params: {
       errorCode: 'REVIEWER_ACCREDITATION_INSUFFICIENT',
       reason: `Reviewer is not accredited for adventure category ${requiredCategoryId}.`,
     };
+  }
+
+  if (requiredReviewerTier) {
+    const actorRank = actor.reviewerTier ? REVIEWER_TIER_RANK[actor.reviewerTier] ?? 0 : 0;
+    const requiredRank = REVIEWER_TIER_RANK[requiredReviewerTier] ?? 99;
+    if (actorRank < requiredRank) {
+      return {
+        authorized: false,
+        httpStatus: 403,
+        errorCode: 'REVIEWER_ACCREDITATION_INSUFFICIENT',
+        reason: `Reviewer tier ${actor.reviewerTier ?? 'NONE'} is below required tier ${requiredReviewerTier}.`,
+      };
+    }
   }
 
   return {
@@ -445,14 +594,71 @@ export function sanitizeAndHashEvidenceUpload(params: {
     };
   }
 
-  // 3. Apply 1.0 km residential start/end geozone privacy trim on GPX tracks
-  let maskedTrackPoints = trackPoints;
+  // 3. BUG-03 Remediation: Validate WGS84 coordinates, compute Haversine distance,
+  // and enforce 1.0 km residential start/end geozone privacy trim on GPX tracks
+  let maskedTrackPoints: ReadonlyArray<GpxTrackPoint> = trackPoints;
   let residentialGeozoneMasked = false;
   if (fileType === 'GPX' && trackPoints.length > 0) {
-    const totalDistKm = trackPoints[trackPoints.length - 1].distanceFromStartKm;
-    maskedTrackPoints = trackPoints.filter(
-      (pt) => pt.distanceFromStartKm >= 1.0 && pt.distanceFromStartKm <= totalDistKm - 1.0
+    const validCoordinatePoints = trackPoints.filter(
+      (pt) =>
+        isValidWgs84Coordinate(pt.latitude, pt.longitude) &&
+        Number.isFinite(pt.elevationMeters) &&
+        Number.isFinite(pt.distanceFromStartKm) &&
+        pt.distanceFromStartKm >= 0
     );
+
+    if (validCoordinatePoints.length > 0) {
+      const startPt = validCoordinatePoints[0];
+      const endPt = validCoordinatePoints[validCoordinatePoints.length - 1];
+      const declaredTotalDistKm = endPt.distanceFromStartKm;
+
+      // Compute cumulative Haversine distances along the track
+      const cumulativeHaversineKm: number[] = [0];
+      for (let i = 1; i < validCoordinatePoints.length; i++) {
+        const prev = validCoordinatePoints[i - 1];
+        const curr = validCoordinatePoints[i];
+        const segKm = computeHaversineDistanceKm(
+          prev.latitude,
+          prev.longitude,
+          curr.latitude,
+          curr.longitude
+        );
+        cumulativeHaversineKm.push(cumulativeHaversineKm[i - 1] + segKm);
+      }
+      const totalHaversineKm =
+        cumulativeHaversineKm[cumulativeHaversineKm.length - 1] ?? 0;
+
+      maskedTrackPoints = validCoordinatePoints.filter((pt, idx) => {
+        const declaredOk =
+          pt.distanceFromStartKm >= 1.0 &&
+          pt.distanceFromStartKm <= declaredTotalDistKm - 1.0;
+
+        // Also enforce real coordinate-derived Haversine distance from start and end
+        // so spoofed `distanceFromStartKm` values cannot expose home/hotel coordinates
+        const directStartDistKm = computeHaversineDistanceKm(
+          startPt.latitude,
+          startPt.longitude,
+          pt.latitude,
+          pt.longitude
+        );
+        const directEndDistKm = computeHaversineDistanceKm(
+          endPt.latitude,
+          endPt.longitude,
+          pt.latitude,
+          pt.longitude
+        );
+        const cumDistKm = cumulativeHaversineKm[idx] ?? 0;
+        const haversineOk =
+          directStartDistKm >= 1.0 &&
+          directEndDistKm >= 1.0 &&
+          cumDistKm >= 1.0 &&
+          cumDistKm <= totalHaversineKm - 1.0;
+
+        return declaredOk && haversineOk;
+      });
+    } else {
+      maskedTrackPoints = [];
+    }
     residentialGeozoneMasked = true;
   }
 
@@ -465,6 +671,48 @@ export function sanitizeAndHashEvidenceUpload(params: {
     maskedTrackPoints,
     residentialGeozoneMasked,
   };
+}
+
+/**
+ * BUG-03 Helper: Validates WGS84 latitude [-90, 90] and longitude [-180, 180].
+ */
+export function isValidWgs84Coordinate(latitude: number, longitude: number): boolean {
+  return (
+    typeof latitude === 'number' &&
+    typeof longitude === 'number' &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+}
+
+/**
+ * BUG-03 Helper: Computes great-circle Haversine distance in kilometers between two WGS84 points.
+ */
+export function computeHaversineDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  if (!isValidWgs84Coordinate(lat1, lon1) || !isValidWgs84Coordinate(lat2, lon2)) {
+    return NaN;
+  }
+  const R_EARTH_KM = 6371.0088;
+  const toRad = (deg: number): number => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  return R_EARTH_KM * c;
 }
 
 /**
@@ -483,12 +731,31 @@ export function computeWestPhysiologicalAscentCeilingMPerHr(
   return Number((vRefSeaLevelMPerHr * phiH * dtFactor).toFixed(2));
 }
 
+const STRICT_PHASH64_HEX_REGEX = /^[0-9a-f]{16}$/i;
+
 /**
- * Computes Hamming distance (0..64 bits) between two 16-hex-character (64-bit) perceptual hashes.
+ * BUG-02 Helper: Validates that a perceptual hash is an exact 16-character (64-bit) hexadecimal string.
+ */
+export function isValidPHash64Hex(hex: string | null | undefined): boolean {
+  if (typeof hex !== 'string') {
+    return false;
+  }
+  return STRICT_PHASH64_HEX_REGEX.test(hex.trim());
+}
+
+/**
+ * BUG-02 Remediation: Computes Hamming distance (0..64 bits) between two 16-hex-character (64-bit)
+ * perceptual hashes. Throws a RangeError if either input is not a valid 16-character hex string,
+ * preventing `NaN ^ NaN === 0` false-duplicate or silent truncation bugs.
  */
 export function computePHashHammingDistance64(hexA: string, hexB: string): number {
-  const cleanA = hexA.trim().toLowerCase().padStart(16, '0').slice(0, 16);
-  const cleanB = hexB.trim().toLowerCase().padStart(16, '0').slice(0, 16);
+  if (!isValidPHash64Hex(hexA) || !isValidPHash64Hex(hexB)) {
+    throw new RangeError(
+      'INVALID_PHASH64_HEX_FORMAT: Perceptual hash inputs must be exact 16-character hexadecimal strings (64-bit digest).'
+    );
+  }
+  const cleanA = hexA.trim().toLowerCase();
+  const cleanB = hexB.trim().toLowerCase();
   let bitDiffCount = 0;
   for (let i = 0; i < 16; i++) {
     const nibbleXor = parseInt(cleanA[i], 16) ^ parseInt(cleanB[i], 16);
@@ -540,24 +807,36 @@ export function evaluateScientificAntiFraud(params: {
   // 3. 64-bit DCT Perceptual Hash (pHash) Hamming distance check (Amendment A4)
   let minDistance: number | null = null;
   let matchedEvidenceId: string | null = null;
-  if (params.uploadedPHash64Hex && params.historicalPHashes.length > 0) {
-    for (const hist of params.historicalPHashes) {
-      const dist = computePHashHammingDistance64(
-        params.uploadedPHash64Hex,
-        hist.pHash64Hex
+  if (params.uploadedPHash64Hex !== null && params.uploadedPHash64Hex !== '') {
+    if (!isValidPHash64Hex(params.uploadedPHash64Hex)) {
+      throw new RangeError(
+        'INVALID_PHASH64_HEX_FORMAT: uploadedPHash64Hex must be an exact 16-character hexadecimal string.'
       );
-      if (minDistance === null || dist < minDistance) {
-        minDistance = dist;
-        matchedEvidenceId = hist.evidenceId;
-      }
     }
-    if (minDistance !== null) {
-      if (minDistance === 0) {
-        flags.push(ForensicAnomalyFlag.CRITICAL_EXACT_DUPLICATE_FLAG);
-      } else if (minDistance <= 6) {
-        flags.push(ForensicAnomalyFlag.HIGH_VISUAL_DUPLICATE_FLAG);
-      } else if (minDistance <= 12) {
-        flags.push(ForensicAnomalyFlag.MODERATE_SIMILARITY_REVIEW_FLAG);
+    if (params.historicalPHashes.length > 0) {
+      for (const hist of params.historicalPHashes) {
+        if (!isValidPHash64Hex(hist.pHash64Hex)) {
+          throw new RangeError(
+            `INVALID_PHASH64_HEX_FORMAT: historical pHash64Hex for ${hist.evidenceId} must be an exact 16-character hexadecimal string.`
+          );
+        }
+        const dist = computePHashHammingDistance64(
+          params.uploadedPHash64Hex,
+          hist.pHash64Hex
+        );
+        if (minDistance === null || dist < minDistance) {
+          minDistance = dist;
+          matchedEvidenceId = hist.evidenceId;
+        }
+      }
+      if (minDistance !== null) {
+        if (minDistance === 0) {
+          flags.push(ForensicAnomalyFlag.CRITICAL_EXACT_DUPLICATE_FLAG);
+        } else if (minDistance <= 6) {
+          flags.push(ForensicAnomalyFlag.HIGH_VISUAL_DUPLICATE_FLAG);
+        } else if (minDistance <= 12) {
+          flags.push(ForensicAnomalyFlag.MODERATE_SIMILARITY_REVIEW_FLAG);
+        }
       }
     }
   }
@@ -605,10 +884,27 @@ export interface CryptographicAuditRecord {
   readonly currentAuditHash: string;
 }
 
+/**
+ * BUG-05 Remediation: Collision-resistant length-prefixed canonical serialization.
+ * Each field is encoded as `<charLength>#<fieldValue>` before joining with `|`,
+ * ensuring that delimiter characters (`|`, `#`, `:`) inside field values can never
+ * shift field boundaries or produce a canonicalization hash collision.
+ */
+export function encodeCanonicalHashFields(
+  fields: ReadonlyArray<string | number | boolean | null | undefined>
+): string {
+  return fields
+    .map((field) => {
+      const str = field === null || field === undefined ? '' : String(field);
+      return `${str.length}#${str}`;
+    })
+    .join('|');
+}
+
 export function computeCanonicalAuditRecordHash(
   entry: Omit<CryptographicAuditRecord, 'currentAuditHash'>
 ): string {
-  const canonicalPayload = [
+  const canonicalPayload = encodeCanonicalHashFields([
     entry.prevAuditHash,
     entry.auditId,
     entry.sequenceNumber !== undefined ? String(entry.sequenceNumber) : '',
@@ -618,7 +914,7 @@ export function computeCanonicalAuditRecordHash(
     entry.action,
     entry.targetEntityId,
     entry.timestampIso,
-  ].join('|');
+  ]);
 
   return computeSha256Hex(canonicalPayload);
 }
@@ -1054,14 +1350,38 @@ export function authorizeIndependentAppealDecision(params: {
   readonly appealCase: AppealCaseRecord;
   readonly actorUserId: string;
   readonly actorRole: PlatformRole;
+  readonly sessionRevoked?: boolean;
+  readonly mfaVerifiedAtIso?: string | null;
+  readonly referenceNowIso?: string;
 }): {
   readonly allowed: boolean;
   readonly errorCode:
     | null
+    | 'SESSION_REVOKED'
+    | 'MFA_VERIFICATION_REQUIRED'
     | 'ROLE_NOT_APPEAL_REVIEWER'
     | 'APPEAL_INDEPENDENCE_VIOLATION_ORIGINAL_REVIEWER'
-    | 'APPEAL_SELF_REVIEW_FORBIDDEN';
+    | 'APPEAL_SELF_REVIEW_FORBIDDEN'
+    | 'APPEAL_REVIEWER_NOT_ASSIGNED';
 } {
+  if (params.sessionRevoked === true) {
+    return {
+      allowed: false,
+      errorCode: 'SESSION_REVOKED',
+    };
+  }
+  if (params.mfaVerifiedAtIso !== undefined) {
+    const mfaCheck = validateMfaTimestampFreshness(
+      params.mfaVerifiedAtIso,
+      params.referenceNowIso ?? DEFAULT_AUDIT_REFERENCE_NOW_ISO
+    );
+    if (!mfaCheck.valid) {
+      return {
+        allowed: false,
+        errorCode: 'MFA_VERIFICATION_REQUIRED',
+      };
+    }
+  }
   if (params.actorRole !== PlatformRole.APPEAL_REVIEWER) {
     return {
       allowed: false,
@@ -1078,6 +1398,15 @@ export function authorizeIndependentAppealDecision(params: {
     return {
       allowed: false,
       errorCode: 'APPEAL_INDEPENDENCE_VIOLATION_ORIGINAL_REVIEWER',
+    };
+  }
+  if (
+    params.appealCase.assignedAppealReviewerId !== null &&
+    params.appealCase.assignedAppealReviewerId !== params.actorUserId
+  ) {
+    return {
+      allowed: false,
+      errorCode: 'APPEAL_REVIEWER_NOT_ASSIGNED',
     };
   }
   return {

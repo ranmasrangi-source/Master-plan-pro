@@ -24,7 +24,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { computeSha256Hex } from '../../services/securityAndVerificationCore.ts';
+import {
+  computeSha256Hex,
+  encodeCanonicalHashFields,
+} from '../../services/securityAndVerificationCore.ts';
 import { GovernanceDepartmentId } from '../../types/constitution.ts';
 import { ForensicAnomalyFlag } from '../../types/verification.ts';
 
@@ -73,7 +76,7 @@ export const SECURITY_TELEMETRY_DISCLOSURE_BANNER =
 export function computeSecurityAuditEventPayloadHash(
   entry: Omit<SecurityAuditLogEntry, 'currentEventHash'>
 ): string {
-  const canonicalPayload = [
+  const canonicalPayload = encodeCanonicalHashFields([
     entry.prevAuditHash,
     entry.eventId,
     String(entry.sequenceNumber),
@@ -86,7 +89,7 @@ export function computeSecurityAuditEventPayloadHash(
     entry.summary,
     entry.forensicMetricLabel,
     entry.status,
-  ].join('|');
+  ]);
   return computeSha256Hex(canonicalPayload);
 }
 

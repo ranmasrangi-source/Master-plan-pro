@@ -7,7 +7,7 @@
  * Low-Bandwidth Expedition Mode, 3D Badges, QR Certificates & 42-Page Public Website Shell
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { DestinationBadge3D } from './components/credentials/DestinationBadge3D.tsx';
 import {
   OfficialCertificateView,
@@ -15,7 +15,12 @@ import {
   validateCredentialIdFormat,
 } from './components/credentials/OfficialCertificateView.tsx';
 import { AccessibleRouteProfile } from './components/geospatial/AccessibleRouteProfile.tsx';
-import { SecurityIncidentIntelligence } from './components/security/SecurityIncidentIntelligence.tsx';
+
+const SecurityIncidentIntelligence = lazy(() =>
+  import('./components/security/SecurityIncidentIntelligence.tsx').then((m) => ({
+    default: m.SecurityIncidentIntelligence,
+  }))
+);
 import {
   ADVENTURE_CATEGORIES_24,
   ALL_100_FEATURED_DESTINATIONS,
@@ -578,8 +583,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Accessible Route Profile & Tabular Alternative — Synchronized with Selected Destination (Fixes BUG-04-07) */}
+          {/* Accessible Route Profile & Tabular Alternative — Synchronized with Selected Destination (Fixes BUG-04-07 & BUG-08) */}
           <AccessibleRouteProfile
+            destinationId={selectedDestination.destinationId}
+            destinationNameEn={selectedDestination.nameEn}
+            destinationNameNe={selectedDestination.nameNe}
             routeId={selectedDestination.separatedRouteIds[0]}
             routeNameEn={`${selectedDestination.nameEn} — Primary Verified Ascent Corridor (${selectedDestination.separatedRouteIds[0]})`}
             summitElevationMeters={selectedDestination.elevationMeters}
@@ -861,8 +869,16 @@ export default function App() {
           <OfficialCertificateView credentialId={credentialLookupInput} />
         </section>
 
-        {/* SECTION 6: SECURITY INCIDENT INTELLIGENCE & REAL-TIME AUDIT TELEMETRY (RECHARTS) */}
-        <SecurityIncidentIntelligence lowBandwidthMode={lowBandwidthMode} />
+        {/* SECTION 6: SECURITY INCIDENT INTELLIGENCE & REAL-TIME AUDIT TELEMETRY (RECHARTS CODE-SPLIT) */}
+        <Suspense
+          fallback={
+            <div className="p-6 bg-[#121212] border border-neutral-800 rounded-xl text-xs font-mono text-neutral-400">
+              Loading Security Incident Intelligence Telemetry Module…
+            </div>
+          }
+        >
+          <SecurityIncidentIntelligence lowBandwidthMode={lowBandwidthMode} />
+        </Suspense>
 
         {/* SECTION 7: ALL 42 MANDATORY PUBLIC WEBSITE PAGES DIRECTORY & INSPECTOR (SECTION 19) */}
         <section id="public-42-pages-section" aria-labelledby="pages-42-heading" className="space-y-6">

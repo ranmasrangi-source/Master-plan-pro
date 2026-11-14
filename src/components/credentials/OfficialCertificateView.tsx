@@ -17,7 +17,10 @@
 
 import React from 'react';
 import { formatBikramSambatDate } from '../../i18n/translations.ts';
-import { computeSha256Hex } from '../../services/securityAndVerificationCore.ts';
+import {
+  computeSha256Hex,
+  encodeCanonicalHashFields,
+} from '../../services/securityAndVerificationCore.ts';
 
 export interface OfficialCertificateViewProps {
   readonly certificateId?: string;
@@ -103,7 +106,7 @@ export function computeCanonicalCertificatePreviewHash(input: {
   readonly policyVersion: string;
   readonly previousEventHash: string;
 }): string {
-  const canonicalPayload = [
+  const canonicalPayload = encodeCanonicalHashFields([
     input.certificateId,
     input.credentialId,
     'IS_REAL_ACHIEVEMENT:false',
@@ -116,8 +119,285 @@ export function computeCanonicalCertificatePreviewHash(input: {
     input.reviewerTierUsed,
     input.policyVersion,
     input.previousEventHash,
-  ].join('|');
+  ]);
   return computeSha256Hex(canonicalPayload);
+}
+
+// ============================================================================
+// BUG-07 REMEDIATION: ISO/IEC 18004 QR CODE VERSION 4-L (33x33) ENCODER & DECODER
+// Encodes the public verification URL in Byte Mode with GF(256) Reed-Solomon ECC.
+// ============================================================================
+
+const QR_V4_SIZE = 33; // Version 4 = 4*4 + 17 = 33x33 modules
+const QR_V4_DATA_CODEWORDS = 80;
+const QR_V4_ECC_CODEWORDS = 20;
+const QR_FORMAT_BITS_L_MASK0 = 0x77c4; // BCH(15,5) format bits for ECC Level L (01) + Mask 0 (000)
+
+function createGf256Tables(): {
+  readonly exp: ReadonlyArray<number>;
+  readonly log: ReadonlyArray<number>;
+} {
+  const exp = new Array<number>(512).fill(0);
+  const log = new Array<number>(256).fill(0);
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    exp[i] = x;
+    log[x] = i;
+    x <<= 1;
+    if (x & 0x100) {
+      x ^= 0x11d; // QR primitive polynomial x^8 + x^4 + x^3 + x^2 + 1
+    }
+  }
+  for (let i = 255; i < 512; i++) {
+    exp[i] = exp[i - 255];
+  }
+  return { exp, log };
+}
+
+const GF256 = createGf256Tables();
+
+function gfMultiply(a: number, b: number): number {
+  if (a === 0 || b === 0) return 0;
+  return GF256.exp[GF256.log[a] + GF256.log[b]];
+}
+
+function computeReedSolomonEcc(
+  dataCodewords: ReadonlyArray<number>,
+  eccCount: number
+): ReadonlyArray<number> {
+  // Build generator polynomial g(x) = (x - alpha^0)(x - alpha^1)...(x - alpha^(eccCount-1))
+  let gen = [1];
+  for (let i = 0; i < eccCount; i++) {
+    const nextGen = new Array<number>(gen.length + 1).fill(0);
+    const root = GF256.exp[i];
+    for (let j = 0; j < gen.length; j++) {
+      nextGen[j] ^= gen[j];
+      nextGen[j + 1] ^= gfMultiply(gen[j], root);
+    }
+    gen = nextGen;
+  }
+
+  const remainder = new Array<number>(eccCount).fill(0);
+  for (const byte of dataCodewords) {
+    const factor = byte ^ remainder[0];
+    remainder.shift();
+    remainder.push(0);
+    if (factor !== 0) {
+      for (let j = 0; j < eccCount; j++) {
+        remainder[j] ^= gfMultiply(gen[j + 1], factor);
+      }
+    }
+  }
+  return remainder;
+}
+
+function buildQrV4FunctionReservedGrid(): {
+  readonly modules: boolean[][];
+  readonly isFunction: boolean[][];
+} {
+  const modules: boolean[][] = Array.from({ length: QR_V4_SIZE }, () =>
+    new Array<boolean>(QR_V4_SIZE).fill(false)
+  );
+  const isFunction: boolean[][] = Array.from({ length: QR_V4_SIZE }, () =>
+    new Array<boolean>(QR_V4_SIZE).fill(false)
+  );
+
+  const setFunctionModule = (r: number, c: number, dark: boolean): void => {
+    if (r >= 0 && r < QR_V4_SIZE && c >= 0 && c < QR_V4_SIZE) {
+      modules[r][c] = dark;
+      isFunction[r][c] = true;
+    }
+  };
+
+  // 1. Finder patterns + 1-module white separators at (0,0), (0,26), (26,0)
+  const placeFinderPattern = (topR: number, leftC: number): void => {
+    for (let dr = -1; dr <= 7; dr++) {
+      for (let dc = -1; dc <= 7; dc++) {
+        const r = topR + dr;
+        const c = leftC + dc;
+        if (r < 0 || r >= QR_V4_SIZE || c < 0 || c >= QR_V4_SIZE) continue;
+        const inOuter = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+        const onBorder = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+        const inCore = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+        setFunctionModule(r, c, inOuter && (onBorder || inCore));
+      }
+    }
+  };
+  placeFinderPattern(0, 0);
+  placeFinderPattern(0, QR_V4_SIZE - 7);
+  placeFinderPattern(QR_V4_SIZE - 7, 0);
+
+  // 2. Alignment pattern for Version 4 centered at (26, 26)
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dc = -2; dc <= 2; dc++) {
+      const dist = Math.max(Math.abs(dr), Math.abs(dc));
+      setFunctionModule(26 + dr, 26 + dc, dist === 2 || dist === 0);
+    }
+  }
+
+  // 3. Timing patterns along row 6 and col 6
+  for (let i = 8; i < QR_V4_SIZE - 8; i++) {
+    if (!isFunction[6][i]) setFunctionModule(6, i, i % 2 === 0);
+    if (!isFunction[i][6]) setFunctionModule(i, 6, i % 2 === 0);
+  }
+
+  // 4. Dark module at (4*4 + 9, 8) = (25, 8)
+  setFunctionModule(25, 8, true);
+
+  // 5. Format information bits (ECC Level L, Mask 0 -> 0x77c4)
+  for (let i = 0; i <= 5; i++) {
+    setFunctionModule(8, i, ((QR_FORMAT_BITS_L_MASK0 >> i) & 1) === 1);
+  }
+  setFunctionModule(8, 7, ((QR_FORMAT_BITS_L_MASK0 >> 6) & 1) === 1);
+  setFunctionModule(8, 8, ((QR_FORMAT_BITS_L_MASK0 >> 7) & 1) === 1);
+  setFunctionModule(7, 8, ((QR_FORMAT_BITS_L_MASK0 >> 8) & 1) === 1);
+  for (let i = 9; i < 15; i++) {
+    setFunctionModule(14 - i, 8, ((QR_FORMAT_BITS_L_MASK0 >> i) & 1) === 1);
+  }
+  for (let i = 0; i < 8; i++) {
+    setFunctionModule(8, QR_V4_SIZE - 1 - i, ((QR_FORMAT_BITS_L_MASK0 >> i) & 1) === 1);
+  }
+  for (let i = 8; i < 15; i++) {
+    setFunctionModule(QR_V4_SIZE - 15 + i, 8, ((QR_FORMAT_BITS_L_MASK0 >> i) & 1) === 1);
+  }
+
+  return { modules, isFunction };
+}
+
+/**
+ * Generates an ISO/IEC 18004 Version 4-L (33x33) QR Code boolean matrix for the given URL/payload.
+ */
+export function generateQrCodeMatrix(payload: string): ReadonlyArray<ReadonlyArray<boolean>> {
+  const utf8Bytes = Array.from(new TextEncoder().encode(payload.trim()));
+  if (utf8Bytes.length === 0 || utf8Bytes.length > 78) {
+    throw new RangeError(
+      `QR_PAYLOAD_LENGTH_OUT_OF_RANGE: Version 4-L QR supports 1..78 UTF-8 bytes (received ${utf8Bytes.length}).`
+    );
+  }
+
+  // Build bit stream: Byte Mode indicator (0100) + 8-bit byte count + payload bytes + 0000 terminator
+  const bits: number[] = [];
+  const pushBits = (val: number, len: number): void => {
+    for (let i = len - 1; i >= 0; i--) {
+      bits.push((val >> i) & 1);
+    }
+  };
+
+  pushBits(0b0100, 4); // Byte Mode
+  pushBits(utf8Bytes.length, 8);
+  for (const b of utf8Bytes) {
+    pushBits(b, 8);
+  }
+  const maxDataBits = QR_V4_DATA_CODEWORDS * 8;
+  pushBits(0, Math.min(4, maxDataBits - bits.length));
+  while (bits.length % 8 !== 0) {
+    bits.push(0);
+  }
+
+  const dataCodewords: number[] = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let byte = 0;
+    for (let j = 0; j < 8; j++) {
+      byte = (byte << 1) | bits[i + j];
+    }
+    dataCodewords.push(byte);
+  }
+
+  let padToggle = 0;
+  while (dataCodewords.length < QR_V4_DATA_CODEWORDS) {
+    dataCodewords.push(padToggle % 2 === 0 ? 0xec : 0x11);
+    padToggle++;
+  }
+
+  const eccCodewords = computeReedSolomonEcc(dataCodewords, QR_V4_ECC_CODEWORDS);
+  const allCodewords = [...dataCodewords, ...eccCodewords];
+  const fullBits: number[] = [];
+  for (const cw of allCodewords) {
+    for (let b = 7; b >= 0; b--) {
+      fullBits.push((cw >> b) & 1);
+    }
+  }
+
+  const { modules, isFunction } = buildQrV4FunctionReservedGrid();
+
+  // ISO/IEC 18004 upward/downward 2-column zig-zag module placement with Mask 0 ((r + c) % 2 === 0)
+  let bitIdx = 0;
+  let upward = true;
+  for (let rightCol = QR_V4_SIZE - 1; rightCol >= 1; rightCol -= 2) {
+    if (rightCol === 6) {
+      rightCol = 5; // Skip vertical timing column 6
+    }
+    for (let step = 0; step < QR_V4_SIZE; step++) {
+      const r = upward ? QR_V4_SIZE - 1 - step : step;
+      for (let dc = 0; dc < 2; dc++) {
+        const c = rightCol - dc;
+        if (!isFunction[r][c]) {
+          const dataBit = bitIdx < fullBits.length ? fullBits[bitIdx] === 1 : false;
+          bitIdx++;
+          const maskBit = (r + c) % 2 === 0;
+          modules[r][c] = dataBit !== maskBit;
+        }
+      }
+    }
+    upward = !upward;
+  }
+
+  return modules.map((row) => Object.freeze([...row]));
+}
+
+/**
+ * Decodes the UTF-8 Byte-Mode payload from a Version 4-L (33x33) QR Code matrix,
+ * verifying structural integrity and extracting the encoded verification URL.
+ */
+export function decodeQrCodeMatrixPayload(
+  matrix: ReadonlyArray<ReadonlyArray<boolean>>
+): string {
+  if (matrix.length !== QR_V4_SIZE || matrix.some((r) => r.length !== QR_V4_SIZE)) {
+    throw new RangeError('INVALID_QR_MATRIX_DIMENSIONS: Expected 33x33 Version 4 QR matrix.');
+  }
+
+  const { isFunction } = buildQrV4FunctionReservedGrid();
+  const extractedBits: number[] = [];
+  let upward = true;
+
+  for (let rightCol = QR_V4_SIZE - 1; rightCol >= 1; rightCol -= 2) {
+    if (rightCol === 6) {
+      rightCol = 5;
+    }
+    for (let step = 0; step < QR_V4_SIZE; step++) {
+      const r = upward ? QR_V4_SIZE - 1 - step : step;
+      for (let dc = 0; dc < 2; dc++) {
+        const c = rightCol - dc;
+        if (!isFunction[r][c]) {
+          const maskBit = (r + c) % 2 === 0;
+          const unmasked = matrix[r][c] !== maskBit;
+          extractedBits.push(unmasked ? 1 : 0);
+        }
+      }
+    }
+    upward = !upward;
+  }
+
+  const readBits = (offset: number, length: number): number => {
+    let val = 0;
+    for (let i = 0; i < length; i++) {
+      val = (val << 1) | (extractedBits[offset + i] ?? 0);
+    }
+    return val;
+  };
+
+  const modeIndicator = readBits(0, 4);
+  if (modeIndicator !== 0b0100) {
+    throw new Error(`UNSUPPORTED_QR_MODE: Expected Byte Mode (0b0100), got 0b${modeIndicator.toString(2)}`);
+  }
+
+  const byteCount = readBits(4, 8);
+  const bytes = new Uint8Array(byteCount);
+  for (let i = 0; i < byteCount; i++) {
+    bytes[i] = readBits(12 + i * 8, 8);
+  }
+
+  return new TextDecoder().decode(bytes);
 }
 
 const PHASE04_DESIGN_PREVIEW_CREDENTIAL_ID = '0TO8848-CRED-2026-000108';
@@ -297,6 +577,7 @@ export const OfficialCertificateView: React.FC<OfficialCertificateViewProps> = (
   const publicVerificationUrl = `https://0to8848official.com/verify/${encodeURIComponent(
     record.credentialId
   )}`;
+  const qrMatrix = generateQrCodeMatrix(publicVerificationUrl);
 
   return (
     <article
@@ -369,36 +650,31 @@ export const OfficialCertificateView: React.FC<OfficialCertificateViewProps> = (
           </div>
         </div>
 
-        {/* Deterministic SVG QR Verification Matrix */}
+        {/* ISO/IEC 18004 Version 4-L (33x33) Scannable SVG QR Verification Matrix (BUG-07) */}
         <div className="lg:col-span-4 flex flex-col items-start lg:items-end justify-center">
           <div className="p-3 bg-white rounded-lg border border-[#C9A86A]">
             <svg
-              viewBox="0 0 100 100"
+              viewBox={`0 0 ${QR_V4_SIZE + 8} ${QR_V4_SIZE + 8}`}
+              shapeRendering="crispEdges"
               className="w-28 h-28"
               role="img"
               aria-label={`QR Code linking to ${publicVerificationUrl}`}
             >
-              <rect width="100" height="100" fill="#FFFFFF" />
-              {/* Finder Patterns */}
-              <rect x="8" y="8" width="24" height="24" fill="none" stroke="#0A0A0A" strokeWidth="4" />
-              <rect x="14" y="14" width="12" height="12" fill="#0A0A0A" />
-              <rect x="68" y="8" width="24" height="24" fill="none" stroke="#0A0A0A" strokeWidth="4" />
-              <rect x="74" y="14" width="12" height="12" fill="#0A0A0A" />
-              <rect x="8" y="68" width="24" height="24" fill="none" stroke="#0A0A0A" strokeWidth="4" />
-              <rect x="14" y="74" width="12" height="12" fill="#0A0A0A" />
-              {/* Deterministic Data Modules */}
-              <rect x="40" y="12" width="6" height="6" fill="#0A0A0A" />
-              <rect x="52" y="12" width="6" height="6" fill="#0A0A0A" />
-              <rect x="46" y="24" width="6" height="6" fill="#0A0A0A" />
-              <rect x="40" y="40" width="20" height="20" fill="#0A0A0A" />
-              <text x="50" y="53" textAnchor="middle" fill="#FFD700" fontSize="6" fontWeight="700">
-                8848
-              </text>
-              <rect x="14" y="44" width="12" height="6" fill="#0A0A0A" />
-              <rect x="70" y="44" width="18" height="6" fill="#0A0A0A" />
-              <rect x="42" y="70" width="12" height="6" fill="#0A0A0A" />
-              <rect x="64" y="68" width="24" height="12" fill="#0A0A0A" />
-              <rect x="52" y="82" width="36" height="8" fill="#0A0A0A" />
+              <rect width={QR_V4_SIZE + 8} height={QR_V4_SIZE + 8} fill="#FFFFFF" />
+              {qrMatrix.map((row, rIdx) =>
+                row.map((isDark, cIdx) =>
+                  isDark ? (
+                    <rect
+                      key={`${rIdx}-${cIdx}`}
+                      x={cIdx + 4}
+                      y={rIdx + 4}
+                      width={1}
+                      height={1}
+                      fill="#0A0A0A"
+                    />
+                  ) : null
+                )
+              )}
             </svg>
           </div>
           <p className="text-xs font-mono text-neutral-400 mt-2 break-all lg:text-right">

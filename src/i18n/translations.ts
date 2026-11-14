@@ -67,7 +67,7 @@ export const TRANSLATIONS: Record<'en' | 'ne' | 'ar', TranslationDictionary> = {
     },
     utility: {
       lowBandwidthLabel: 'Base-Camp Satellite Mode',
-      lowBandwidthActive: 'Low-Bandwidth Active (<15 KB Lite)',
+      lowBandwidthActive: 'Low-Bandwidth Active (Media & Charts Suppressed)',
       standardModeActive: 'Full Editorial View',
       languageLabel: 'Locale',
       freeGuaranteeNotice: 'Standard Badges, Certificates & Public Verification: 100% Free Forever',
@@ -99,7 +99,7 @@ export const TRANSLATIONS: Record<'en' | 'ne' | 'ar', TranslationDictionary> = {
     },
     utility: {
       lowBandwidthLabel: 'बेस-क्याम्प कम-ब्यान्डविथ मोड',
-      lowBandwidthActive: 'कम-ब्यान्डविथ सक्रिय (<15 KB)',
+      lowBandwidthActive: 'कम-ब्यान्डविथ सक्रिय (तस्बिर र चार्ट बन्द)',
       standardModeActive: 'पूर्ण दृश्य मोड',
       languageLabel: 'भाषा',
       freeGuaranteeNotice: 'मानक ब्याज, प्रमाणपत्र र सार्वजनिक प्रमाणीकरण: सधैंका लागि १००% निःशुल्क',
@@ -131,7 +131,7 @@ export const TRANSLATIONS: Record<'en' | 'ne' | 'ar', TranslationDictionary> = {
     },
     utility: {
       lowBandwidthLabel: 'وضع مخيم القاعدة (نطاق منخفض)',
-      lowBandwidthActive: 'الوضع الخفيف نشط (<15 كيلوبايت)',
+      lowBandwidthActive: 'الوضع الخفيف نشط (إيقاف الصور والرسوم)',
       standardModeActive: 'العرض الكامل',
       languageLabel: 'اللغة',
       freeGuaranteeNotice: 'الشارات والشهادات القياسية والتحقق العام: مجانية 100% دائماً',
@@ -146,16 +146,91 @@ export function toDevanagariNumerals(value: number | string): string {
   return String(value).replace(/[0-9]/g, (d) => NEPALI_DIGITS[Number(d)] ?? d);
 }
 
+export const BIKRAM_SAMBAT_MONTH_NAMES_EN: ReadonlyArray<string> = [
+  'Baisakh',
+  'Jestha',
+  'Asar',
+  'Shrawan',
+  'Bhadra',
+  'Ashwin',
+  'Kartik',
+  'Mangsir',
+  'Poush',
+  'Magh',
+  'Falgun',
+  'Chaitra',
+];
+
+export const BIKRAM_SAMBAT_MONTH_NAMES_NE: ReadonlyArray<string> = [
+  'बैशाख',
+  'जेठ',
+  'असार',
+  'साउन',
+  'भदौ',
+  'असोज',
+  'कात्तिक',
+  'मंसिर',
+  'पुष',
+  'माघ',
+  'फागुन',
+  'चैत',
+];
+
 /**
- * FQ-07: Deterministic Gregorian (AD) to Bikram Sambat (वि.सं. BS) Converter for Permit & Certificate Dates.
- * Bikram Sambat is 56 years, 8 months, and ~17 days ahead of Gregorian AD.
- * Validates real Gregorian calendar dates (including leap years) and accurately handles
- * the Baisakh 1 (mid-April) New Year boundary.
+ * BUG-06 Remediation: Authoritative Bikram Sambat (वि.सं. BS) Month-Length Lookup Table
+ * (12 months per BS year: Baisakh..Chaitra, each 29..32 days).
+ * Anchored at Baisakh 1, 2075 BS = 2018-04-14 UTC so that every Gregorian calendar day
+ * advances the Bikram Sambat date monotonically by +1 day with zero duplicate dates on
+ * 31-day Gregorian months and zero skipped dates across February.
+ */
+const BS_EPOCH_START_YEAR = 2075;
+const BS_EPOCH_ANCHOR_UTC_MS = Date.UTC(2018, 3, 14); // 2018-04-14 = 2075-01-01 BS
+const MS_PER_UTC_DAY = 86_400_000;
+
+export const BS_CALENDAR_MONTH_LENGTHS: Readonly<Record<number, readonly [number, number, number, number, number, number, number, number, number, number, number, number]>> = {
+  2075: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2018-04-14 .. 2019-04-13)
+  2076: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 30], // 365 days (2019-04-14 .. 2020-04-12, 2020 leap)
+  2077: [31, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31], // 366 days (2020-04-13 .. 2021-04-13)
+  2078: [31, 31, 31, 32, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2021-04-14 .. 2022-04-13)
+  2079: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2022-04-14 .. 2023-04-13)
+  2080: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 30], // 365 days (2023-04-14 .. 2024-04-12, 2024 leap)
+  2081: [31, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31], // 366 days (2024-04-13 .. 2025-04-13)
+  2082: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2025-04-14 .. 2026-04-13)
+  2083: [30, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31], // 365 days (2026-04-14 .. 2027-04-13)
+  2084: [31, 31, 32, 31, 31, 30, 30, 30, 29, 30, 30, 30], // 365 days (2027-04-14 .. 2028-04-12, 2028 leap)
+  2085: [31, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31], // 366 days (2028-04-13 .. 2029-04-13)
+  2086: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2029-04-14 .. 2030-04-13)
+  2087: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2030-04-14 .. 2031-04-13)
+  2088: [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 30], // 365 days (2031-04-14 .. 2032-04-12, 2032 leap)
+  2089: [31, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31], // 366 days (2032-04-13 .. 2033-04-13)
+  2090: [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30], // 365 days (2033-04-14 .. 2034-04-13)
+};
+
+function getBsMonthLengthsForYear(bsYear: number): readonly number[] {
+  const known = BS_CALENDAR_MONTH_LENGTHS[bsYear];
+  if (known) {
+    return known;
+  }
+  // Fallback for BS years outside 2075..2090: 366 days when corresponding AD year is a leap year
+  const approxAdYear = bsYear - 56;
+  const isLeap = (approxAdYear % 4 === 0 && approxAdYear % 100 !== 0) || approxAdYear % 400 === 0;
+  return isLeap
+    ? [31, 32, 31, 32, 31, 30, 30, 30, 29, 30, 29, 31]
+    : [31, 31, 32, 31, 31, 31, 30, 29, 30, 29, 30, 30];
+}
+
+/**
+ * FQ-07 & BUG-06: Deterministic Gregorian (AD) to Bikram Sambat (वि.सं. BS) Converter.
+ * Validates real Gregorian calendar dates (including leap years) and computes exact
+ * Bikram Sambat year, month (1..12), and day (1..32) using cumulative day offsets
+ * across the Bikram Sambat month-length lookup table.
  */
 export function formatBikramSambatDate(isoDateString: string): {
   readonly gregorianIso: string;
   readonly bikramSambatEn: string;
   readonly bikramSambatDevanagari: string;
+  readonly bsMonthNameEn: string;
+  readonly bsMonthNameNe: string;
   readonly isValidDate: boolean;
 } {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDateString.trim());
@@ -164,6 +239,8 @@ export function formatBikramSambatDate(isoDateString: string): {
       gregorianIso: isoDateString,
       bikramSambatEn: 'BS Date Pending',
       bikramSambatDevanagari: 'वि.सं. मिति',
+      bsMonthNameEn: '',
+      bsMonthNameNe: '',
       isValidDate: false,
     };
   }
@@ -176,6 +253,8 @@ export function formatBikramSambatDate(isoDateString: string): {
       gregorianIso: isoDateString,
       bikramSambatEn: 'BS Date Pending',
       bikramSambatDevanagari: 'वि.सं. मिति',
+      bsMonthNameEn: '',
+      bsMonthNameNe: '',
       isValidDate: false,
     };
   }
@@ -187,34 +266,58 @@ export function formatBikramSambatDate(isoDateString: string): {
       gregorianIso: isoDateString,
       bikramSambatEn: 'BS Date Pending',
       bikramSambatDevanagari: 'वि.सं. मिति',
+      bsMonthNameEn: '',
+      bsMonthNameNe: '',
       isValidDate: false,
     };
   }
 
-  // Approximate Gregorian day-of-month solar transition (Sankranti ~14th of each month)
-  const sankrantiDay = 14;
-  const isOnOrAfterSankranti = adDay >= sankrantiDay;
+  const targetUtcMs = Date.UTC(adYear, adMonth - 1, adDay);
+  let remainingDays = Math.round((targetUtcMs - BS_EPOCH_ANCHOR_UTC_MS) / MS_PER_UTC_DAY);
+  let bsYear = BS_EPOCH_START_YEAR;
 
-  // Bikram Sambat New Year (Baisakh 1 = Month 1) begins on April 14
-  const isOnOrAfterNewYear = adMonth > 4 || (adMonth === 4 && isOnOrAfterSankranti);
-  const bsYear = isOnOrAfterNewYear ? adYear + 57 : adYear + 56;
+  if (remainingDays >= 0) {
+    while (true) {
+      const monthLengths = getBsMonthLengthsForYear(bsYear);
+      const daysInYear = monthLengths.reduce((acc, d) => acc + d, 0);
+      if (remainingDays < daysInYear) {
+        break;
+      }
+      remainingDays -= daysInYear;
+      bsYear += 1;
+    }
+  } else {
+    while (remainingDays < 0) {
+      bsYear -= 1;
+      const monthLengths = getBsMonthLengthsForYear(bsYear);
+      const daysInYear = monthLengths.reduce((acc, d) => acc + d, 0);
+      remainingDays += daysInYear;
+    }
+  }
 
-  // Map Gregorian month + Sankranti phase to Bikram Sambat month (1 = Baisakh .. 12 = Chaitra)
-  // On/after 14th of adMonth: Apr->1, May->2, Jun->3, Jul->4, Aug->5, Sep->6, Oct->7, Nov->8, Dec->9, Jan->10, Feb->11, Mar->12
-  const bsMonthOnOrAfter = ((adMonth + 8) % 12) + 1;
-  const bsMonthIndex = isOnOrAfterSankranti
-    ? bsMonthOnOrAfter
-    : ((bsMonthOnOrAfter + 10) % 12) + 1;
-
-  const bsDay = isOnOrAfterSankranti ? adDay - sankrantiDay + 1 : adDay + 17;
+  const currentYearMonths = getBsMonthLengthsForYear(bsYear);
+  let bsMonthIndex = 1;
+  for (let m = 0; m < 12; m++) {
+    const daysInMonth = currentYearMonths[m];
+    if (remainingDays < daysInMonth) {
+      bsMonthIndex = m + 1;
+      break;
+    }
+    remainingDays -= daysInMonth;
+  }
+  const bsDay = remainingDays + 1;
 
   const paddedMonth = String(bsMonthIndex).padStart(2, '0');
   const paddedDay = String(bsDay).padStart(2, '0');
+  const bsMonthNameEn = BIKRAM_SAMBAT_MONTH_NAMES_EN[bsMonthIndex - 1] ?? 'Baisakh';
+  const bsMonthNameNe = BIKRAM_SAMBAT_MONTH_NAMES_NE[bsMonthIndex - 1] ?? 'बैशाख';
 
   return {
     gregorianIso: `${adYear}-${String(adMonth).padStart(2, '0')}-${String(adDay).padStart(2, '0')}`,
     bikramSambatEn: `${bsYear}-${paddedMonth}-${paddedDay} BS`,
-    bikramSambatDevanagari: `वि.सं. ${toDevanagariNumerals(bsYear)}-${toDevanagariNumerals(paddedMonth)}-${toDevanagariNumerals(paddedDay)}`,
+    bikramSambatDevanagari: `वि.सं. ${toDevanagariNumerals(bsYear)}-${toDevanagariNumerals(paddedMonth)}-${toDevanagariNumerals(paddedDay)} (${bsMonthNameNe})`,
+    bsMonthNameEn,
+    bsMonthNameNe,
     isValidDate: true,
   };
 }

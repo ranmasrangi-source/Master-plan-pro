@@ -31,16 +31,21 @@ import {
   authorizeIndependentAppealDecision,
   authorizeReviewerClaimAndAction,
   computeCanonicalAuditRecordHash,
+  computeHaversineDistanceKm,
   computePHashHammingDistance64,
   computeSha256Hex,
   computeWestPhysiologicalAscentCeilingMPerHr,
   createZeroIpWhistleblowerReport,
+  encodeCanonicalHashFields,
   enforceConstitutionalEndpointGate,
   evaluateScientificAntiFraud,
   evaluateServerEcfAssessment,
   evaluateVerificationDecisionGate,
+  isValidPHash64Hex,
+  isValidWgs84Coordinate,
   sanitizeAndHashEvidenceUpload,
   sanitizeCaseForReviewerFirewall,
+  validateMfaTimestampFreshness,
   verifyCryptographicAuditChain,
   verifyCryptographicAuditChainDetailed,
 } from '../src/services/securityAndVerificationCore.ts';
@@ -765,4 +770,251 @@ describe('0 TO 8848 — Phase 5 Readiness Gate & Post-CI Audit Remediation Suite
       'Phase 05+ concrete database repository must not be prematurely created during Phase 01-04'
     );
   });
+
+  it('REGRESSION BUG-01 & BUG-09: MFA timestamp format/freshness validation and Reviewer accreditation status, expiry & tier enforcement', () => {
+    // BUG-01: Malformed, expired (>12h), and future-spoofed MFA timestamps must be rejected
+    assert.equal(validateMfaTimestampFreshness('not-a-timestamp').valid, false);
+    assert.equal(
+      validateMfaTimestampFreshness('not-a-timestamp').reasonCode,
+      'MFA_TIMESTAMP_MALFORMED'
+    );
+    assert.equal(
+      validateMfaTimestampFreshness('2026-11-11T00:00:00Z', '2026-11-12T12:00:00Z').valid,
+      false
+    );
+    assert.equal(
+      validateMfaTimestampFreshness('2026-11-11T00:00:00Z', '2026-11-12T12:00:00Z').reasonCode,
+      'MFA_TIMESTAMP_EXPIRED'
+    );
+    assert.equal(
+      validateMfaTimestampFreshness('2026-11-12T15:00:00Z', '2026-11-12T12:00:00Z').valid,
+      false
+    );
+    assert.equal(
+      validateMfaTimestampFreshness('2026-11-12T15:00:00Z', '2026-11-12T12:00:00Z').reasonCode,
+      'MFA_TIMESTAMP_FUTURE_SPOOFED'
+    );
+    assert.equal(
+      validateMfaTimestampFreshness('2026-11-12T08:00:00Z', '2026-11-12T12:00:00Z').valid,
+      true
+    );
+
+    const staleMfaOutcome = authorizeReviewerClaimAndAction({
+      actor: {
+        userId: 'USR-REV-STALE',
+        role: PlatformRole.SENIOR_REVIEWER,
+        sessionRevoked: false,
+        mfaVerifiedAtIso: '2020-01-01T00:00:00Z',
+        organizationIds: ['ORG-INDEPENDENT'],
+        qualifiedCategories: ['CAT-12'],
+      },
+      applicantUserId: 'USR-APPLICANT-99',
+      applicantOrganizationIds: ['ORG-OTHER'],
+      hasCommercialBookingWithApplicant: false,
+      requiredCategoryId: 'CAT-12',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(staleMfaOutcome.authorized, false);
+    assert.equal(staleMfaOutcome.errorCode, 'MFA_VERIFICATION_REQUIRED');
+
+    // BUG-09: Expired or suspended accreditation status and insufficient reviewer tier must be rejected
+    const suspendedAccreditation = authorizeReviewerClaimAndAction({
+      actor: {
+        userId: 'USR-REV-SUSPENDED',
+        role: PlatformRole.SENIOR_REVIEWER,
+        sessionRevoked: false,
+        mfaVerifiedAtIso: '2026-11-12T10:00:00Z',
+        organizationIds: ['ORG-INDEPENDENT'],
+        qualifiedCategories: ['CAT-12'],
+        accreditationStatus: 'SUSPENDED',
+      },
+      applicantUserId: 'USR-APPLICANT-99',
+      applicantOrganizationIds: ['ORG-OTHER'],
+      hasCommercialBookingWithApplicant: false,
+      requiredCategoryId: 'CAT-12',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(suspendedAccreditation.authorized, false);
+    assert.equal(suspendedAccreditation.errorCode, 'REVIEWER_ACCREDITATION_INSUFFICIENT');
+
+    const expiredAccreditation = authorizeReviewerClaimAndAction({
+      actor: {
+        userId: 'USR-REV-EXPIRED',
+        role: PlatformRole.SENIOR_REVIEWER,
+        sessionRevoked: false,
+        mfaVerifiedAtIso: '2026-11-12T10:00:00Z',
+        organizationIds: ['ORG-INDEPENDENT'],
+        qualifiedCategories: ['CAT-12'],
+        accreditationStatus: 'ACTIVE',
+        accreditationExpiresAtIso: '2026-10-01T00:00:00Z',
+      },
+      applicantUserId: 'USR-APPLICANT-99',
+      applicantOrganizationIds: ['ORG-OTHER'],
+      hasCommercialBookingWithApplicant: false,
+      requiredCategoryId: 'CAT-12',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(expiredAccreditation.authorized, false);
+    assert.equal(expiredAccreditation.errorCode, 'REVIEWER_ACCREDITATION_INSUFFICIENT');
+
+    const insufficientTier = authorizeReviewerClaimAndAction({
+      actor: {
+        userId: 'USR-REV-L2',
+        role: PlatformRole.REVIEWER,
+        sessionRevoked: false,
+        mfaVerifiedAtIso: '2026-11-12T10:00:00Z',
+        organizationIds: ['ORG-INDEPENDENT'],
+        qualifiedCategories: ['CAT-12'],
+        reviewerTier: ReviewerQualificationTier.L2_TECHNICAL_HIGH_ALTITUDE,
+        accreditationStatus: 'ACTIVE',
+        accreditationExpiresAtIso: '2027-12-31T23:59:59Z',
+      },
+      applicantUserId: 'USR-APPLICANT-99',
+      applicantOrganizationIds: ['ORG-OTHER'],
+      hasCommercialBookingWithApplicant: false,
+      requiredCategoryId: 'CAT-12',
+      requiredReviewerTier: ReviewerQualificationTier.DUAL_L4_SOVEREIGN_8000M_POLAR,
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(insufficientTier.authorized, false);
+    assert.equal(insufficientTier.errorCode, 'REVIEWER_ACCREDITATION_INSUFFICIENT');
+  });
+
+  it('REGRESSION BUG-02, BUG-03, BUG-04 & BUG-05: Strict pHash hex validation, Haversine GPX masking, Appeal reviewer assignment/session/MFA checks, and delimiter-collision-proof audit hashing', () => {
+    // BUG-02: Non-hex or wrong-length pHash strings must be rejected instead of returning Hamming distance 0
+    assert.equal(isValidPHash64Hex('a1b2c3d4e5f60718'), true);
+    assert.equal(isValidPHash64Hex('zzzzzzzzzzzzzzzz'), false);
+    assert.equal(isValidPHash64Hex('a1b2c3'), false);
+    assert.throws(
+      () => computePHashHammingDistance64('zzzzzzzzzzzzzzzz', 'zzzzzzzzzzzzzzzz'),
+      /INVALID_PHASH64_HEX_FORMAT/
+    );
+    assert.throws(
+      () => computePHashHammingDistance64('abc', 'def'),
+      /INVALID_PHASH64_HEX_FORMAT/
+    );
+
+    // BUG-03: Spoofed distanceFromStartKm on a point within 1.0 km of start coordinate must be masked out by Haversine check
+    assert.equal(isValidWgs84Coordinate(27.9881, 86.925), true);
+    assert.equal(isValidWgs84Coordinate(195.0, 86.925), false);
+    const spoofedTrack = [
+      { latitude: 27.68, longitude: 86.73, elevationMeters: 2860, distanceFromStartKm: 0.0 },
+      // Point only ~70 meters from start coordinate, but attacker spoofs distanceFromStartKm = 5.0 km!
+      { latitude: 27.6805, longitude: 86.7305, elevationMeters: 2865, distanceFromStartKm: 5.0 },
+      // Genuine mid-route point (~8.0 km away from start and ~5.6 km from end)
+      { latitude: 27.75, longitude: 86.71, elevationMeters: 3880, distanceFromStartKm: 8.2 },
+      { latitude: 27.8, longitude: 86.72, elevationMeters: 4420, distanceFromStartKm: 13.5 },
+    ];
+    const sanitizedSpoofed = sanitizeAndHashEvidenceUpload({
+      evidenceId: 'EV-SPOOF-GPX',
+      applicationId: 'APP-SPOOF-01',
+      uploaderUserId: 'USR-01',
+      pillar: 'PIL-02_TELEMETRY' as any,
+      fileType: 'GPX',
+      rawContentString: '<gpx><trk></trk></gpx>',
+      trackPoints: spoofedTrack,
+    });
+    assert.equal(sanitizedSpoofed.accepted, true);
+    assert.equal(
+      sanitizedSpoofed.maskedTrackPoints.length,
+      1,
+      'Spoofed residential start point must be stripped by Haversine coordinate distance check'
+    );
+    assert.equal(sanitizedSpoofed.maskedTrackPoints[0].elevationMeters, 3880);
+    assert.ok(computeHaversineDistanceKm(27.68, 86.73, 27.6805, 86.7305) < 0.1);
+
+    // BUG-04: Appeal reviewer authorization must enforce sessionRevoked, MFA freshness, and assignedAppealReviewerId match
+    const assignedAppealCase = {
+      appealId: 'APL-2026-900',
+      applicationId: 'APP-2026-900',
+      originalVerificationCaseId: 'CASE-2026-900',
+      appellantUserId: 'USR-CLIMBER-01',
+      excludedOriginalReviewerIds: ['USR-ORIG-REV-01'],
+      appealGrounds: 'Additional documentary permit evidence provided',
+      supplementalEvidenceIds: ['EV-SUPP-900'],
+      assignedAppealReviewerId: 'USR-APPEAL-ASSIGNED',
+      status: 'IN_APPEAL_REVIEW' as const,
+      reasonedOutcome: null,
+      policyVersion: 'v1.1.0',
+      filedAt: '2026-11-12T06:00:00Z',
+      decidedAt: null,
+    };
+    const unassignedAttempt = authorizeIndependentAppealDecision({
+      appealCase: assignedAppealCase,
+      actorUserId: 'USR-APPEAL-OTHER',
+      actorRole: PlatformRole.APPEAL_REVIEWER,
+      sessionRevoked: false,
+      mfaVerifiedAtIso: '2026-11-12T10:00:00Z',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(unassignedAttempt.allowed, false);
+    assert.equal(unassignedAttempt.errorCode, 'APPEAL_REVIEWER_NOT_ASSIGNED');
+
+    const revokedSessionAttempt = authorizeIndependentAppealDecision({
+      appealCase: assignedAppealCase,
+      actorUserId: 'USR-APPEAL-ASSIGNED',
+      actorRole: PlatformRole.APPEAL_REVIEWER,
+      sessionRevoked: true,
+      mfaVerifiedAtIso: '2026-11-12T10:00:00Z',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(revokedSessionAttempt.allowed, false);
+    assert.equal(revokedSessionAttempt.errorCode, 'SESSION_REVOKED');
+
+    const expiredMfaAppealAttempt = authorizeIndependentAppealDecision({
+      appealCase: assignedAppealCase,
+      actorUserId: 'USR-APPEAL-ASSIGNED',
+      actorRole: PlatformRole.APPEAL_REVIEWER,
+      sessionRevoked: false,
+      mfaVerifiedAtIso: '2020-01-01T00:00:00Z',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(expiredMfaAppealAttempt.allowed, false);
+    assert.equal(expiredMfaAppealAttempt.errorCode, 'MFA_VERIFICATION_REQUIRED');
+
+    const validAssignedAppeal = authorizeIndependentAppealDecision({
+      appealCase: assignedAppealCase,
+      actorUserId: 'USR-APPEAL-ASSIGNED',
+      actorRole: PlatformRole.APPEAL_REVIEWER,
+      sessionRevoked: false,
+      mfaVerifiedAtIso: '2026-11-12T10:00:00Z',
+      referenceNowIso: '2026-11-12T12:00:00Z',
+    });
+    assert.equal(validAssignedAppeal.allowed, true);
+    assert.equal(validAssignedAppeal.errorCode, null);
+
+    // BUG-05: Delimiter injection ("A|B", "C") vs ("A", "B|C") must produce distinct canonical encodings and distinct SHA-256 digests
+    assert.notEqual(
+      encodeCanonicalHashFields(['A|B', 'C']),
+      encodeCanonicalHashFields(['A', 'B|C'])
+    );
+    const hashRecordA = computeCanonicalAuditRecordHash({
+      prevAuditHash: GENESIS_AUDIT_BLOCK_HASH,
+      auditId: 'AUD-COLLISION-TEST',
+      sequenceNumber: 1,
+      actorUserId: 'USR-01',
+      actorRole: PlatformRole.SECURITY_AUDITOR,
+      departmentId: GovernanceDepartmentId.DEPT_11_INTERNAL_AUDIT,
+      action: 'ACTION_A|INJECTED',
+      targetEntityId: 'TARGET_B',
+      timestampIso: '2026-11-12T12:00:00Z',
+    });
+    const hashRecordB = computeCanonicalAuditRecordHash({
+      prevAuditHash: GENESIS_AUDIT_BLOCK_HASH,
+      auditId: 'AUD-COLLISION-TEST',
+      sequenceNumber: 1,
+      actorUserId: 'USR-01',
+      actorRole: PlatformRole.SECURITY_AUDITOR,
+      departmentId: GovernanceDepartmentId.DEPT_11_INTERNAL_AUDIT,
+      action: 'ACTION_A',
+      targetEntityId: 'INJECTED|TARGET_B',
+      timestampIso: '2026-11-12T12:00:00Z',
+    });
+    assert.notEqual(
+      hashRecordA,
+      hashRecordB,
+      'Delimiter-injected audit records must never collide to the same SHA-256 hash'
+    );
+  });
 });
+

@@ -8,11 +8,19 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
+  decodeQrCodeMatrixPayload,
+  generateQrCodeMatrix,
   lookupCredentialVerificationPortal,
   validateCredentialIdFormat,
 } from '../src/components/credentials/OfficialCertificateView.tsx';
-import { EVEREST_SOUTH_COL_WAYPOINTS } from '../src/components/geospatial/AccessibleRouteProfile.tsx';
+import {
+  DESTINATION_ROUTE_WAYPOINTS_BY_ID,
+  EVEREST_SOUTH_COL_WAYPOINTS,
+  getWaypointsForDestinationRoute,
+} from '../src/components/geospatial/AccessibleRouteProfile.tsx';
 import {
   INITIAL_SECURITY_AUDIT_LOGS,
   INITIAL_SECURITY_TIME_SERIES,
@@ -27,6 +35,7 @@ import {
 import {
   ADVENTURE_CATEGORIES_24,
   FEATURED_DESTINATIONS_SHOWCASE,
+  GENERATED_BRAND_IMAGES,
   MACRO_DOMAINS_SUMMARY,
   PUBLIC_WEBSITE_42_PAGES,
   formatGeoCoordinates,
@@ -232,5 +241,93 @@ describe('PHASE 04 — Brand, UI/UX, WCAG 2.2 AA, I18n (EN/NE/AR) & 42 Public Pa
     assert.equal(unknownPortalLookup.status, 'NOT_FOUND');
     assert.equal(unknownPortalLookup.httpStatus, 404);
     assert.equal(unknownPortalLookup.record, null);
+  });
+
+  it('REGRESSION BUG-06, BUG-07, BUG-08, BUG-10, BUG-11 & BUG-12: BS Calendar Continuity, Scannable QR Matrix Round-Trip, Destination-Specific Route Profiles, Asset Resolution, and Doc Consistency', () => {
+    // BUG-06: Verify consecutive Gregorian days across 31-day months and February leap/non-leap boundaries never produce duplicate or skipped Bikram Sambat dates
+    const may31 = formatBikramSambatDate('2026-05-31');
+    const jun01 = formatBikramSambatDate('2026-06-01');
+    assert.notEqual(
+      may31.bikramSambatEn,
+      jun01.bikramSambatEn,
+      'Consecutive Gregorian dates (2026-05-31 and 2026-06-01) must never map to the same Bikram Sambat date'
+    );
+    assert.equal(may31.bikramSambatEn, '2083-02-18 BS');
+    assert.equal(jun01.bikramSambatEn, '2083-02-19 BS');
+
+    const feb28 = formatBikramSambatDate('2026-02-28');
+    const mar01 = formatBikramSambatDate('2026-03-01');
+    assert.equal(feb28.bikramSambatEn, '2082-11-16 BS');
+    assert.equal(mar01.bikramSambatEn, '2082-11-17 BS');
+
+    // Leap year Feb 29 check (2024-02-29 is valid; 2026-02-29 is invalid)
+    assert.equal(formatBikramSambatDate('2024-02-29').isValidDate, true);
+    assert.equal(formatBikramSambatDate('2026-02-29').isValidDate, false);
+
+    // BUG-07: Verify ISO/IEC 18004 Version 4-L (33x33) QR matrix encodes and decodes the exact verification URL
+    const expectedVerifyUrl = 'https://0to8848official.com/verify/0TO8848-CRED-2026-000108';
+    const qrMatrix = generateQrCodeMatrix(expectedVerifyUrl);
+    assert.equal(qrMatrix.length, 33, 'Version 4 QR matrix must have 33 rows');
+    assert.equal(qrMatrix[0].length, 33, 'Version 4 QR matrix must have 33 columns');
+    // Top-left 7x7 finder pattern outer corners and center must be dark (true)
+    assert.equal(qrMatrix[0][0], true);
+    assert.equal(qrMatrix[0][6], true);
+    assert.equal(qrMatrix[3][3], true);
+    assert.equal(qrMatrix[1][1], false);
+    const decodedUrl = decodeQrCodeMatrixPayload(qrMatrix);
+    assert.equal(
+      decodedUrl,
+      expectedVerifyUrl,
+      'Decoded QR matrix payload must match the exact public verification URL'
+    );
+
+    // BUG-08: Verify destination route profiles return distinct, accurate waypoints for Everest, Kangchenjunga, Island Peak, Matterhorn, and Fitz Roy
+    const everestWpts = getWaypointsForDestinationRoute({
+      destinationId: 'DEST-001',
+      routeId: 'RTE-001A',
+      routeNameEn: 'Everest South Col',
+      summitElevationMeters: 8848.86,
+    });
+    const matterhornWpts = getWaypointsForDestinationRoute({
+      destinationId: 'DEST-032',
+      routeId: 'RTE-032A',
+      routeNameEn: 'Matterhorn Hörnli Ridge',
+      summitElevationMeters: 4478,
+    });
+    const fitzRoyWpts = getWaypointsForDestinationRoute({
+      destinationId: 'DEST-081',
+      routeId: 'RTE-081A',
+      routeNameEn: 'Fitz Roy Franco-Argentine',
+      summitElevationMeters: 3405,
+    });
+    assert.equal(everestWpts[everestWpts.length - 1].elevationMeters, 8848.86);
+    assert.equal(matterhornWpts[matterhornWpts.length - 1].elevationMeters, 4478);
+    assert.ok(matterhornWpts[0].nameEn.includes('Zermatt'));
+    assert.equal(fitzRoyWpts[fitzRoyWpts.length - 1].elevationMeters, 3405);
+    assert.ok(fitzRoyWpts[0].nameEn.includes('El Chaltén'));
+    assert.equal(Object.keys(DESTINATION_ROUTE_WAYPOINTS_BY_ID).length, 5);
+
+    // BUG-10: Verify low-bandwidth mode labels do not make unverified "<15 KB" claims
+    assert.equal(TRANSLATIONS.en.utility.lowBandwidthActive.includes('<15 KB'), false);
+    assert.equal(TRANSLATIONS.ne.utility.lowBandwidthActive.includes('<15 KB'), false);
+
+    // BUG-11: Verify GENERATED_BRAND_IMAGES resolves via new URL(..., import.meta.url).href rather than raw "/src/assets/..." string literal
+    assert.equal(GENERATED_BRAND_IMAGES.everestHero.startsWith('/src/assets/'), false);
+    assert.equal(GENERATED_BRAND_IMAGES.alpineRidge.startsWith('/src/assets/'), false);
+    assert.equal(GENERATED_BRAND_IMAGES.patagoniaSpires.startsWith('/src/assets/'), false);
+
+    // BUG-12: Verify docs/00_PROJECT_CONSTITUTION.md and docs/01_MASTER_PLAN.md do not claim "AWAITING GATE 01 SIGN-OFF"
+    const constitutionDoc = fs.readFileSync(
+      path.resolve(process.cwd(), 'docs/00_PROJECT_CONSTITUTION.md'),
+      'utf8'
+    );
+    const masterPlanDoc = fs.readFileSync(
+      path.resolve(process.cwd(), 'docs/01_MASTER_PLAN.md'),
+      'utf8'
+    );
+    assert.equal(constitutionDoc.includes('AWAITING GATE 01 SIGN-OFF'), false);
+    assert.equal(masterPlanDoc.includes('AWAITING GATE 01 SIGN-OFF'), false);
+    assert.ok(constitutionDoc.includes('GATE 04 AWAITING FOUNDER APPROVAL'));
+    assert.ok(masterPlanDoc.includes('GATE 04 AWAITING FOUNDER APPROVAL'));
   });
 });
